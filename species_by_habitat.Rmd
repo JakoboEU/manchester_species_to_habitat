@@ -1,0 +1,110 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(dbplyr)
+library(readxl)
+```
+
+```{r}
+data = read_csv('./included_species.csv')
+data
+```
+
+```{r}
+avonet = read_csv('./AVONET2_eBird.csv')
+avonet
+```
+
+```{r}
+bird_avonet_habitat = data %>% filter(group == 'bird') %>% left_join(avonet, by = c('scientific name' = 'Species2')) %>% select('common name', 'scientific name', Habitat, group) %>% rename(common_name='common name', scientific_name='scientific name', habitat = Habitat)
+
+bird_avonet_habitat$habitat[bird_avonet_habitat$habitat == 'Forest'] = 'Woodland'
+bird_avonet_habitat$habitat[bird_avonet_habitat$habitat == 'Human Modified'] = 'Built-Up'
+bird_avonet_habitat$habitat[bird_avonet_habitat$habitat == 'Riverine'] = 'Wetlands'
+
+bird_avonet_habitat
+```
+```{r}
+birdlife_data = read_excel('./birdlife_datazone_habitats.xlsx')
+birdlife_data
+```
+
+```{r}
+bird_birdlife_habitat = data %>% filter(group == 'bird') %>% left_join(birdlife_data) %>% select('common name', 'scientific name', habitat, group) %>% rename(common_name='common name', scientific_name='scientific name')
+bird_birdlife_habitat
+```
+```{r}
+bird_habitat = distinct(rbind(bird_avonet_habitat, bird_birdlife_habitat))
+bird_habitat
+```
+
+```{r}
+plant_data = read_excel('./PLANTATT_19_Nov_08.xls')
+plant_data %>% select('Taxon name', 'Fam', 'NS', 'Hght', 'GB', 'Br Habitats') %>% right_join(data %>% filter(group == 'plant'), by = c('Taxon name' = 'scientific name'))
+```
+
+Broad Habitat codes
+1   Broadleaved, mixed and yew woodland
+2   Coniferous woodland
+3   Boundary and linear features (eg hedges, roadsides, walls)
+4   Arable and horticultural (includes orchards, excludes domestic gardens)
+5   Improved grassland
+6   Neutral grassland (includes coarse Arrhenatherum grassland)
+7   Calcareous grassland (includes lowland and montane types)
+8   Acid grassland (includes non-calcareous sandy grassland)
+9   Bracken
+10   Dwarf shrub heath (cover of dwarf shrubs at least 25%)
+11   Fen, marsh and swamp (not wooded)
+12   Bog
+13   Standing water and canals
+14   Rivers and streams
+15   Montane habitats (acid grassland and heath with montane species)
+16   Inland rock (quarries, cliffs, screes)
+17   Built-up areas and gardens
+18   Supralittoral rock (does not include maritime grassland)
+19   Supralittoral sediment (strandlines, shingle, coastal dunes)
+21   Littoral sediment (includes saltmarsh and saltmarsh pools)
+23   Inshore sublittoral sediment (only Zostera marina)
+```{r}
+plant_habitat_dict = data.frame(
+  habitat_code = 1:23,
+  habitat = c('Woodland', 'Woodland', 'Boundary', 'Arable', 'Grassland', 'Grassland', 'Grassland', 'Grassland', 'Bracken', 'Shrub', 'Wetlands', 'Wetlands', 'Wetlands', 'Wetlands', 'Mountain', 'Rock', 'Built-Up', 'Rock', 'Sediment', NA, 'Saltmarsh', NA, 'Inshore')
+  )
+plant_habitat_dict
+```
+
+```{r}
+plant_habitat = plant_data %>% select('Taxon name', 'Br Habitats') %>% rename(habitat_code = 'Br Habitats') %>% right_join(data %>% filter(group == 'plant'), by = c('Taxon name' = 'scientific name')) %>% separate_rows(habitat_code, convert = TRUE, sep = ",") %>% left_join(plant_habitat_dict, by = c('habitat_code' = 'habitat_code')) %>% select('common name', 'Taxon name', 'habitat', group) %>% rename(common_name='common name', scientific_name='Taxon name')
+plant_habitat 
+```
+
+```{r}
+insect_data = read_excel('./wildlifetrust_habitats.xlsx')
+insect_data
+```
+
+```{r}
+insect_habitat = insect_data %>% right_join(data %>% filter(group == 'insect')) %>% select('common name', 'scientific name', 'habitat', group) %>% rename(common_name='common name', scientific_name='scientific name')
+insect_habitat
+```
+```{r}
+rbind(bird_habitat, insect_habitat, plant_habitat) %>% select(habitat) %>% filter(!is.na(habitat)) %>% distinct()
+```
+
+```{r}
+species_to_habitat = rbind(bird_habitat, insect_habitat, plant_habitat) %>% filter(habitat %in% c('Woodland', 'Wetlands', 'Built-Up', 'Arable', 'Rock', 'Shrub', 'Grassland'))
+species_to_habitat
+```
+
+```{r}
+table(species_to_habitat$group, species_to_habitat$habitat)
+```
+
+```{r}
+write_csv(species_to_habitat, 'species_habitats.csv')
+```
