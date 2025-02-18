@@ -28,7 +28,7 @@ habitat_taxa_group_counts
 ```
 
 ```{r}
-survey_data = read_csv('./input/form-1__survey.after_2_land_use.csv') %>% select(title, Birds_Songbirds, Birds_Warblers, Birds_Finches, Birds_Tits, Birds_Crows, Birds_Pigeons, Birds_Aerial, Birds_Other, Insects_Butterflies, Insects_Bumblebees, Insects_Hoverflies, Insects_Other, Plants_Trees, Plants_Midstory, Plants_Ferns, Plants_Orchids, Plants_Fungi, Plants_Micro, Plants_Grasses, Plants_Other) %>% unite(concat, -c("title"), sep = ",", remove=T) %>% separate_rows(concat, convert = TRUE, sep = ",") %>% filter(!is.na(concat)) %>% rename(species=concat)
+survey_data = read_csv('./input/2/form-1__survey.after_2_land_use.csv') %>% select(title, Birds_Songbirds, Birds_Warblers, Birds_Finches, Birds_Tits, Birds_Crows, Birds_Pigeons, Birds_Aerial, Birds_Other, Insects_Butterflies, Insects_Bumblebees, Insects_Hoverflies, Insects_Other, Plants_Trees, Plants_Midstory, Plants_Ferns, Plants_Orchids, Plants_Fungi, Plants_Micro, Plants_Grasses, Plants_Other) %>% unite(concat, -c("title"), sep = ",", remove=T) %>% separate_rows(concat, convert = TRUE, sep = ",") %>% filter(!is.na(concat)) %>% rename(species=concat)
 survey_data
 ```
 

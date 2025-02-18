@@ -11,12 +11,12 @@ library(readxl)
 ```
 
 ```{r}
-data = read_csv('./input/included_species.csv')
+data = read_csv('./input/1/included_species.csv')
 data
 ```
 
 ```{r}
-avonet = read_csv('./input/AVONET2_eBird.csv')
+avonet = read_csv('./input/1/AVONET2_eBird.csv')
 avonet
 ```
 
@@ -30,7 +30,7 @@ bird_avonet_habitat$habitat[bird_avonet_habitat$habitat == 'Riverine'] = 'Wetlan
 bird_avonet_habitat
 ```
 ```{r}
-birdlife_data = read_excel('./input/birdlife_datazone_habitats.xlsx')
+birdlife_data = read_excel('./input/1/birdlife_datazone_habitats.xlsx')
 birdlife_data
 ```
 
@@ -44,7 +44,7 @@ bird_habitat
 ```
 
 ```{r}
-plant_data = read_excel('./input/PLANTATT_19_Nov_08.xls')
+plant_data = read_excel('./input/1/PLANTATT_19_Nov_08.xls')
 plant_data %>% select('Taxon name', 'Fam', 'NS', 'Hght', 'GB', 'Br Habitats') %>% right_join(data %>% filter(group == 'plant'), by = c('Taxon name' = 'scientific name'))
 ```
 
@@ -84,7 +84,7 @@ plant_habitat
 ```
 
 ```{r}
-insect_data = read_excel('./input/wildlifetrust_habitats.xlsx')
+insect_data = read_excel('./input/1/wildlifetrust_habitats.xlsx')
 insect_data
 ```
 
