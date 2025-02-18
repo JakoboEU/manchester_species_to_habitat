@@ -1,0 +1,49 @@
+---
+title: "Build predictors for species presence"
+output: html_notebook
+---
+
+```{r}
+survey_predictors = read_csv('./input/2/form-1__survey.after_2_land_use.csv') %>% 
+  rowwise() %>%
+  mutate(
+    duration = End_time - Start_time, 
+    hour_of_day = format(strptime(Start_time,"%H:%M:%S"),'%H'), 
+    avg_loudness_decibels = mean(c_across(c('Start_decibels', 'End_decibels'))),
+    date = as.Date(Date, format = "%d/%m/%Y"),
+    lawn_present = ifelse(is.na(Lawn_present), F, T),
+    lawn_area_m2 = ifelse(is.na(Lawn_Area_m), 0, Lawn_Area_m),
+    lawn_shard_length_cm = ifelse(is.na(Lawn_Shard_length_cm), 0, Lawn_Shard_length_cm),
+    lawn_other_species_present = ifelse(is.na(Lawn_Other_species), F, T),
+    wild_grass_present = ifelse(is.na(Wild_grass_present), F, T),
+    wild_grass_area_m2 = ifelse(is.na(Wild_grass_area_m), 0, Wild_grass_area_m),
+    wild_grass_shard_length_cm = ifelse(is.na(Wild_Shard_length_cm), 0, Wild_Shard_length_cm),
+    wild_grass_other_species_present = ifelse(is.na(Wild_Other_species), F, T)) %>%
+  mutate(year = format(date ,"%Y"), start_of_survey_period = as.Date(paste(format(date ,"%Y"), '06', '01', sep = '-'))) %>%
+  mutate(days_into_survey = date - start_of_survey_period) %>%
+  rename(area_id = Area_ID, pedestrian_count = Pedestrian_count, land_use = Land_use) %>%
+  select(title, area_id, year, days_into_survey, duration, hour_of_day, avg_loudness_decibels, pedestrian_count, lawn_present, lawn_area_m2, lawn_shard_length_cm, lawn_other_species_present, wild_grass_present, wild_grass_area_m2, wild_grass_shard_length_cm, wild_grass_other_species_present, land_use)
+
+survey_predictors
+```
+
+```{r}
+distance_predictors = read_csv('input/3/distance_predictors.csv') %>% filter(title %in% survey_data$title)
+distance_predictors
+```
+
+```{r}
+predictors = read_csv('input/3/predictors.csv') %>% 
+  filter(title %in% survey_data$title) %>%
+  mutate(
+    area_greenspace_m2 = round(area_greenspace_m2),
+    area_private_gardens_m2 = round(area_private_gardens_m2),
+    area_canopy_cover = round(area_canopy_cover)
+  )
+predictors
+```
+
+## Store predictors
+```{r}
+distance_predictors %>% left_join(predictors) %>% left_join(survey_predictors) %>% write_csv('output/3_predictors.csv')
+```

@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "Build response variable for each site based on the proportion of species from each habitat that occurs"
 output: html_notebook
 ---
 ```{r}
