@@ -106,5 +106,5 @@ table(species_to_habitat$group, species_to_habitat$habitat)
 ```
 
 ```{r}
-write_csv(species_to_habitat, './output/species_by_habitat.csv')
+write_csv(species_to_habitat, './output/1_species_by_habitat.csv')
 ```

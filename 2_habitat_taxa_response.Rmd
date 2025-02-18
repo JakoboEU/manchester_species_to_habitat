@@ -9,7 +9,7 @@ library(dbplyr)
 ```
 
 ```{r}
-species_by_habitat = read_csv('./output/species_by_habitat.csv') %>% rename(taxa_group = group)
+species_by_habitat = read_csv('./output/1_species_by_habitat.csv') %>% rename(taxa_group = group)
 species_by_habitat
 ```
 ```{r}
@@ -102,5 +102,5 @@ result = result %>% mutate_all(funs(ifelse(is.na(.), 0, .))) %>% mutate_if(is.nu
 result
 ```
 ```{r}
-write_csv(result, './output/habitat_taxa_response.csv')
+write_csv(result, './output/2_habitat_taxa_response.csv')
 ```
