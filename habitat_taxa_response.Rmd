@@ -1,0 +1,106 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+library(dbplyr)
+```
+
+```{r}
+species_by_habitat = read_csv('./output/species_by_habitat.csv') %>% rename(taxa_group = group)
+species_by_habitat
+```
+```{r}
+taxa_group_counts = species_by_habitat %>% distinct(common_name, taxa_group) %>% group_by(taxa_group) %>% summarise(n = n())
+taxa_group_counts
+```
+
+```{r}
+habitat_counts = species_by_habitat %>% distinct(common_name, habitat) %>% group_by(habitat) %>% summarise(n = n())
+habitat_counts
+```
+
+```{r}
+habitat_taxa_group_counts = species_by_habitat %>% group_by(habitat, taxa_group) %>% summarise(n = n())
+habitat_taxa_group_counts
+```
+
+```{r}
+survey_data = read_csv('./input/form-1__survey.after_2_land_use.csv') %>% select(title, Birds_Songbirds, Birds_Warblers, Birds_Finches, Birds_Tits, Birds_Crows, Birds_Pigeons, Birds_Aerial, Birds_Other, Insects_Butterflies, Insects_Bumblebees, Insects_Hoverflies, Insects_Other, Plants_Trees, Plants_Midstory, Plants_Ferns, Plants_Orchids, Plants_Fungi, Plants_Micro, Plants_Grasses, Plants_Other) %>% unite(concat, -c("title"), sep = ",", remove=T) %>% separate_rows(concat, convert = TRUE, sep = ",") %>% filter(!is.na(concat)) %>% rename(species=concat)
+survey_data
+```
+
+```{r}
+species_data_by_habitat_and_taxa_group = survey_data %>% right_join(species_by_habitat, by = c('species' = 'common_name')) %>% select(title, species, habitat, taxa_group)
+species_data_by_habitat_and_taxa_group
+```
+
+```{r}
+result = data.frame(title = unique(survey_data$title))
+
+for (row in 1:nrow(taxa_group_counts)) {
+  row_taxa_group = taxa_group_counts$taxa_group[row]
+  row_n = taxa_group_counts$n[row]
+  colname = paste('taxa', row_taxa_group, 'res', sep = '_')
+  
+  richness = species_data_by_habitat_and_taxa_group %>% 
+    filter(taxa_group == row_taxa_group) %>% 
+    select(title, species) %>% 
+    distinct() %>%
+    group_by(title) %>% 
+    summarise(richness = n()) %>%
+    mutate(proportion = richness / row_n) %>%
+    select(title, proportion) %>%
+    rename(!!colname := proportion)
+  
+  result = result %>% left_join(richness, by = c('title' = 'title'))
+}
+
+for (row in 1:nrow(habitat_counts)) {
+  row_habitat = habitat_counts$habitat[row]
+  row_n = habitat_counts$n[row]
+  colname = paste('habitat', str_replace(str_to_lower(row_habitat), '-', '_'), 'res', sep = '_')
+  
+  richness = species_data_by_habitat_and_taxa_group %>% 
+    filter(habitat == row_habitat) %>% 
+    select(title, species) %>% 
+    distinct() %>%
+    group_by(title) %>% 
+    summarise(richness = n()) %>%
+    mutate(proportion = richness / row_n) %>%
+    select(title, proportion) %>%
+    rename(!!colname := proportion)
+  
+  result = result %>% left_join(richness, by = c('title' = 'title'))
+}
+
+for (row in 1:nrow(habitat_taxa_group_counts)) {
+  row_habitat = habitat_taxa_group_counts$habitat[row]
+  row_taxa_group = habitat_taxa_group_counts$taxa_group[row]
+  row_n = habitat_taxa_group_counts$n[row]
+  
+  colname = paste('hab_taxa', str_replace(str_to_lower(row_habitat), '-', '_'), row_taxa_group, 'res', sep = '_')
+  
+  richness = species_data_by_habitat_and_taxa_group %>% 
+    filter(habitat == row_habitat) %>% 
+    filter(taxa_group == row_taxa_group) %>% 
+    select(title, species) %>% 
+    distinct() %>%
+    group_by(title) %>% 
+    summarise(richness = n()) %>%
+    mutate(proportion = richness / row_n) %>%
+    select(title, proportion) %>%
+    rename(!!colname := proportion)
+  
+  result = result %>% left_join(richness, by = c('title' = 'title'))
+}
+
+result = result %>% mutate_all(funs(ifelse(is.na(.), 0, .))) %>% mutate_if(is.numeric, round, 3)
+
+result
+```
+```{r}
+write_csv(result, './output/habitat_taxa_response.csv')
+```
