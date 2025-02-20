@@ -1,0 +1,193 @@
+---
+title: "Which predictors help predict the occurance of species from different habitats"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+library(dbplyr)
+library(VSURF)
+library(MuMIn)
+
+options(na.action = "na.fail") 
+```
+
+```{r}
+predictor_vars = read_csv('output/3_predictors.csv') %>% select(
+  title, 
+  distance_to_motorway_m,
+  distance_to_aroad_or_motorway_m,
+  distance_to_broad_or_aroad_or_motorway_m,
+  distance_to_public_road_m,
+  distance_to_major_river_m,
+  distance_to_secondary_river_m,
+  distance_to_watercourse_m,
+  distance_to_railway_m,
+  distance_to_woodland_m,
+  distance_to_offroad_cyclepath_m,
+  distance_to_large_greenspace_m,
+  distance_to_medium_greenspace_m,
+  distance_to_small_greenspace_m,
+  area_max_building_height_m,
+  area_avg_building_height_m,
+  area_total_building_area_m2,
+  max_tree_height,
+  canopy_cover,
+  area_max_tree_height,
+  area_avg_tree_height,
+  area_canopy_cover,
+  area_tree_count,
+  area_greenspace_m2,
+  area_private_gardens_m2,
+  lawn_area_m2,
+  lawn_shard_length_cm,
+  wild_grass_area_m2,
+  wild_grass_shard_length_cm
+)
+predictor_vars
+```
+
+```{r}
+response_vars = read_csv('./output/2_habitat_taxa_response.csv')
+response_vars
+```
+
+
+## Helper VSURP and Dredge functions
+```{r}
+build_data_df = function(response_name) {
+  response_vars %>% rename(response = response_name) %>% select(title, response) %>% left_join(predictor_vars) %>% select(-c(title))
+}
+
+run_vsurf = function(data) {
+  VSURF(response ~ ., data)
+}
+
+formula_from_vsurf = function(predictor_df, run_vsurf_result) {
+  as.formula(paste('response', paste(names(predictor_df[,run_vsurf_result$varselect.interp]), collapse="+"), sep = "~"))
+}
+
+# Taken from MuMIN package
+# https://rdrr.io/cran/MuMIn/src/R/averaging.R
+# https://rdrr.io/cran/MuMIn/src/R/model.avg.R
+
+.coefarr.avg = function(cfarr, weight, revised.var, full, alpha) {	
+    weight <- weight / sum(weight)
+    nCoef <- dim(cfarr)[3L]
+    if(full) {
+      nas <- is.na(cfarr[, 1L, ]) & is.na(cfarr[, 2L, ])
+      cfarr[, 1L, ][nas] <- cfarr[, 2L, ][nas] <- 0
+      #cfarr[, 1L:2L, ][is.na(cfarr[, 1L:2L, ])] <- 0
+      if(!all(is.na(cfarr[, 3L, ])))
+        cfarr[ ,3L, ][is.na(cfarr[ , 3L, ])] <- Inf
+    }
+    
+    avgcoef <- array(dim = c(nCoef, 5L),
+                     dimnames = list(dimnames(cfarr)[[3L]], c("Estimate",
+                                                              "Std. Error", "Adjusted SE", "Lower CI", "Upper CI")))
+    for(i in seq_len(nCoef))
+      avgcoef[i, ] <- par.avg(cfarr[, 1L, i], cfarr[, 2L, i], weight,
+                              df = cfarr[, 3L, i], alpha = alpha, revised.var = revised.var)
+    
+    avgcoef[is.nan(avgcoef)] <- NA
+    return(avgcoef)
+  }
+
+.makecoefmat = function(cf) {
+  no.ase <- all(is.na(cf[, 3L]))
+  z <- abs(cf[, 1L] / cf[, if(no.ase) 2L else 3L])
+  pval <- 2 * pnorm(z, lower.tail = FALSE)
+  cbind(cf[, if(no.ase) 1L:2L else 1L:3L, drop = FALSE],
+        `z value` = z, `Pr(>|z|)` = zapsmall(pval))
+}
+
+base_model = function(formula, data) {
+  glm(
+    formula,
+    data=data
+  )
+}
+
+model_average <- function(base_model) {
+  dredge_result <- dredge(base_model)
+  summary(model.avg(dredge_result))
+}
+
+dredge_summary <- function(model_sum) {
+  # just return the estimate and p value
+  weight <- model_sum$msTable[, 5L]
+  
+  coefmat.full <- as.data.frame(.makecoefmat(.coefarr.avg(model_sum$coefArray, weight,
+                                                          attr(model_sum, "revised.var"), TRUE, 0.05)))
+  coefmat.full <- coefmat.full[-c(1), c(1, 2, 5)]
+  names(coefmat.full) <- c("estimate", "error", "p")
+  coefmat.full <- tibble::rownames_to_column(coefmat.full, "explanatory")
+  
+  coefmat.full
+}
+
+plot_vsurp_result = function(species_name, result_table) {
+  ggplot(result_table, aes(y=explanatory, x=estimate)) + 
+    geom_line() +
+    geom_point()+
+    geom_errorbar(aes(xmin=estimate-error, xmax=estimate+error), width=.2,
+                   position=position_dodge(0.05)) +
+    geom_vline(xintercept=0, linetype="dotted") +
+    guides(colour=guide_legend(title="Predictor type")) + xlab('Increase in proportion of group presence\n± Standard Error') + ylab('Predictor') +
+    labs(title = species_name) +
+    scale_x_continuous(limits = c(-0.005, 0.005)) +
+    theme_bw() +
+    theme(legend.justification = "top")
+}
+```
+
+# Some results
+```{r}
+response_var_names = names(response_vars[,-1])
+response_var_names
+```
+
+  
+```{r}
+s = 'hab_taxa_grassland_insect_res'
+print(s)
+data = build_data_df(s)
+vsurf_result = run_vsurf(data)
+vsurf_result
+```
+```{r}
+form = formula_from_vsurf(data, vsurf_result)
+model = base_model(form, data)
+summary(model)
+```
+
+
+```{r}
+dredge_result = model_average(model)
+dredge_sum = dredge_summary(dredge_result)
+dredge_sum
+```
+
+```{r}
+plot_vsurp_result(s, dredge_sum)
+```
+
+
+```{r}
+for (rv in response_var_names) {
+  set.seed(5678)
+  print(rv)
+  rv_data = build_data_df(rv)
+  rv_vsurf_result = run_vsurf(rv_data)
+  rv_form = formula_from_vsurf(rv_data, rv_vsurf_result)
+  rv_model = base_model(rv_form, rv_data)
+  rv_dredge_result = model_average(rv_model)
+  rv_dredge_sum = dredge_summary(rv_dredge_result)
+  rv_plot = plot_vsurp_result(rv, rv_dredge_sum)
+  ggsave(paste('output', '4', paste(rv, 'jpg', sep = '.'), sep = '/'), plot = rv_plot, dpi = 90, width = 500, height = 500, units = 'px')
+  rm(rv_data, rv_vsurf_result, rv_form, rv_model, rv_dredge_result, rv_dredge_sum, rv_plot)
+}
+```
+
+
+
