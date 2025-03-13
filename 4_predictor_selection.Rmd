@@ -317,6 +317,39 @@ ggplot(left_join(survey_locations, hab_taxa_built_up_insect, by = c('title' = 't
   theme_bw()
 ```
 
+## hab_taxa_arable_insect_res
+```{r}
+hab_taxa_arable_insect = all_vars %>% arrange((desc(hab_taxa_arable_insect_res))) %>% left_join(patch_images) %>% select('title', 'link', 'hab_taxa_arable_insect_res', 'max_tree_height', 'area_avg_tree_height', 'href')
+
+hab_taxa_arable_insect %>% head() %>% select(-href) %>% kable(escape = FALSE)
+
+for (i in 1:5) {
+  browseURL(hab_taxa_arable_insect$href[i])
+}
+```
+
+```{r}
+species_in_square('363 4', NA, 'insect')
+species_in_square('941 7', NA, 'insect')
+species_in_square('612 3', NA, 'insect')
+species_in_square('906 4', NA, 'insect')
+species_in_square('547 8', NA, 'insect')
+species_in_square('876 2', NA, 'insect')
+```
+
+
+```{r}
+ggplot(left_join(survey_locations, hab_taxa_arable_insect, by = c('title' = 'title')), aes(colour = hab_taxa_arable_insect_res)) + 
+  geom_sf() + 
+  geom_point(
+    aes(color = hab_taxa_arable_insect_res, geometry = geometry),
+    stat = "sf_coordinates",
+    size = 2
+  ) +
+  scale_colour_viridis_c(option = "G") +
+  theme_bw()
+```
+
 ## taxa_insect_res
 ```{r}
 taxa_insect = all_vars %>% arrange((desc(taxa_insect_res))) %>% left_join(patch_images) %>% select('title', 'link', 'taxa_insect_res', 'max_tree_height', 'area_avg_tree_height', 'href')
