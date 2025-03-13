@@ -34,6 +34,7 @@ survey_data
 
 ```{r}
 species_data_by_habitat_and_taxa_group = survey_data %>% right_join(species_by_habitat, by = c('species' = 'common_name')) %>% select(title, species, habitat, taxa_group)
+write_csv(species_data_by_habitat_and_taxa_group, 'output/2_species_data_by_habitat_and_taxa_group.csv')
 species_data_by_habitat_and_taxa_group
 ```
 
