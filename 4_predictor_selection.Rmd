@@ -73,6 +73,15 @@ survey_locations = survey_locations_input %>% filter(title %in% response_vars$ti
 ggplot(survey_locations) + geom_sf() + theme_bw()
 ```
 
+```{r}
+greenspace = read_sf('./input/4/greenspace2.shp')
+ggplot(greenspace) + geom_sf() + theme_bw()
+```
+```{r}
+watercourse = read_sf('./input/4/watercourse.shp')
+ggplot(watercourse) + geom_sf() + theme_bw()
+```
+
 ## Helper VSURP and Dredge functions
 ```{r}
 build_data_df = function(response_name) {
@@ -305,16 +314,18 @@ species_in_square('1004 3', 'Built-Up', 'insect')
 species_in_square('941 7', 'Built-Up', 'insect')
 ```
 
-```{r}
-ggplot(left_join(survey_locations, hab_taxa_built_up_insect, by = c('title' = 'title')), aes(colour = hab_taxa_built_up_insect_res)) + 
-  geom_sf() + 
+```{r, fig.width=6, fig.height=6}
+ggplot(left_join(survey_locations, hab_taxa_built_up_insect, by = c('title' = 'title'))) + 
+  geom_sf(mapping = aes(colour = hab_taxa_built_up_insect_res)) + 
+  geom_sf(data = greenspace, alpha = 0.2, fill = "green") +
+  geom_sf(data = watercourse, alpha = 0.5, colour = "blue") +
   geom_point(
     aes(color = hab_taxa_built_up_insect_res, geometry = geometry),
     stat = "sf_coordinates",
-    size = 2
+    size = 0.75
   ) +
-  scale_colour_viridis_c(option = "G") +
-  theme_bw()
+  scale_color_gradient(low = "yellow", high = "red") +
+  theme_bw() + theme(legend.position="bottom")
 ```
 
 ## hab_taxa_arable_insect_res
@@ -338,16 +349,18 @@ species_in_square('876 2', NA, 'insect')
 ```
 
 
-```{r}
-ggplot(left_join(survey_locations, hab_taxa_arable_insect, by = c('title' = 'title')), aes(colour = hab_taxa_arable_insect_res)) + 
-  geom_sf() + 
+```{r, fig.width=6, fig.height=6}
+ggplot(left_join(survey_locations, hab_taxa_arable_insect, by = c('title' = 'title'))) + 
+  geom_sf(mapping = aes(colour = hab_taxa_arable_insect_res)) + 
+  geom_sf(data = greenspace, alpha = 0.2, fill = "green") +
+  geom_sf(data = watercourse, alpha = 0.5, colour = "blue") +
   geom_point(
     aes(color = hab_taxa_arable_insect_res, geometry = geometry),
     stat = "sf_coordinates",
-    size = 2
+    size = 0.75
   ) +
-  scale_colour_viridis_c(option = "G") +
-  theme_bw()
+  scale_color_gradient(low = "yellow", high = "red") +
+  theme_bw() + theme(legend.position="bottom")
 ```
 
 ## taxa_insect_res
@@ -371,14 +384,20 @@ species_in_square('941 7', NA, 'insect')
 ```
 
 
-```{r}
-ggplot(left_join(survey_locations, taxa_insect, by = c('title' = 'title')), aes(colour = taxa_insect_res)) + 
-  geom_sf() + 
+```{r, fig.width=6, fig.height=6}
+ggplot(data = left_join(survey_locations, taxa_insect, by = c('title' = 'title'))) + 
+  geom_sf(mapping = aes(colour = taxa_insect_res)) + 
+  geom_sf(data = greenspace, alpha = 0.2, fill = "green") +
+  geom_sf(data = watercourse, alpha = 0.5, colour = "blue") +
   geom_point(
     aes(color = taxa_insect_res, geometry = geometry),
     stat = "sf_coordinates",
-    size = 2
+    size = 0.75
   ) +
-  scale_colour_viridis_c(option = "G") +
-  theme_bw()
+  scale_color_gradient(low = "yellow", high = "red") +
+  theme_bw() + theme(legend.position="bottom")
+```
+
+```{r}
+write_sf(left_join(survey_locations, taxa_insect, by = c('title' = 'title')), '~/Downloads/survey.shp')
 ```
