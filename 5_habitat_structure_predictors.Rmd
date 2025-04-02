@@ -1,0 +1,139 @@
+---
+title: "Look at habitat structure as predictors for richness"
+output: html_notebook
+---
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(readr)
+library(MASS)
+library(MuMIn)
+options(na.action = "na.fail")
+```
+
+# Calculate taxa richness per survey square
+```{r}
+species_per_grid = read_csv('./output/2_species_data_by_habitat_and_taxa_group.csv')
+species_per_grid
+```
+```{r}
+taxa_richness_per_grid = species_per_grid %>% filter(!is.na(title)) %>% dplyr::select(title, species, taxa_group) %>% distinct() %>% group_by(title, taxa_group) %>% dplyr::summarise(richness = n())
+taxa_richness_per_grid
+```
+
+```{r}
+taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% count()
+```
+
+```{r}
+habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv')
+habitat_structure_predictors
+```
+
+```{r}
+create_data_for_taxa = function(taxa_name) {
+  present_records = taxa_richness_per_grid %>% filter(taxa_group == taxa_name) %>% left_join(habitat_structure_predictors, by = 'title')
+  
+  absent_records = taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% filter(!(title %in% present_records$title)) %>% left_join(habitat_structure_predictors, by = 'title') %>% mutate(richness = 0, taxa_group = taxa_name)
+  
+  rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title) %>% dplyr::select(-taxa_group)
+}
+create_data_for_taxa('insect')
+```
+
+## Habitat structure for insects
+```{r}
+insect_data = create_data_for_taxa('insect')
+insect_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, insect_data)
+summary(insect_model)
+```
+```{r}
+model_interactions <- lm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^2, insect_data)
+summary(model_interactions)
+```
+
+```{r}
+model_interactions <- lm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, insect_data)
+summary(model_interactions)
+```
+
+```{r}
+insect_model_selected = stepAIC(insect_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+```
+```{r}
+summary(insect_model_selected)
+```
+
+```{r}
+AIC(insect_model, insect_model_selected)
+```
+
+```{r}
+insect_model_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, insect_data))
+insect_model_dredge_best = get.models(insect_model_dredge, 1)[[1]]
+summary(insect_model_dredge_best)
+```
+
+```{r}
+AIC(insect_model, insect_model_selected, insect_model_dredge_best)
+```
+
+## Habitat structure for birds
+```{r}
+bird_data = create_data_for_taxa('bird')
+bird_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, bird_data)
+summary(bird_model)
+```
+
+```{r}
+bird_model_selected = stepAIC(bird_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+```
+
+```{r}
+summary(bird_model_selected)
+```
+
+```{r}
+AIC(bird_model, bird_model_selected)
+```
+
+```{r}
+bird_model_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, bird_data))
+bird_model_dredge_best = get.models(bird_model_dredge, 1)[[1]]
+summary(bird_model_dredge_best)
+```
+
+```{r}
+AIC(bird_model, bird_model_selected, bird_model_dredge_best)
+```
+
+## Habitat structure for plants
+```{r}
+plant_data = create_data_for_taxa('plant')
+plant_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, plant_data)
+summary(plant_model)
+```
+
+```{r}
+plant_model_selected = stepAIC(plant_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+```
+
+```{r}
+summary(plant_model_selected)
+```
+
+```{r}
+AIC(plant_model, plant_model_selected)
+```
+
+```{r}
+plant_model_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, plant_data))
+plant_model_dredge_best = get.models(plant_model_dredge, 1)[[1]]
+summary(plant_model_dredge_best)
+```
+
+```{r}
+AIC(plant_model, plant_model_selected, plant_model_dredge_best)
+```
+
