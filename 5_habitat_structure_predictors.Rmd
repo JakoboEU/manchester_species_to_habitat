@@ -9,6 +9,7 @@ library(dplyr)
 library(readr)
 library(MASS)
 library(MuMIn)
+library(ggplot2)
 options(na.action = "na.fail")
 ```
 
@@ -27,7 +28,7 @@ taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% count()
 ```
 
 ```{r}
-habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv')
+habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv') %>% rename(herb=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
 habitat_structure_predictors
 ```
 
@@ -46,22 +47,22 @@ create_data_for_taxa('insect')
 ## Habitat structure for insects
 ```{r}
 insect_data = create_data_for_taxa('insect')
-insect_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, insect_data)
+insect_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, insect_data)
 summary(insect_model)
 ```
 
 ```{r}
-model_interactions <- lm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^2, insect_data)
+model_interactions <- lm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^2, insect_data)
 summary(model_interactions)
 ```
 
 ```{r}
-model_interactions <- lm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, insect_data)
+model_interactions <- lm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, insect_data)
 summary(model_interactions)
 ```
 
 ```{r}
-insect_model_selected = stepAIC(insect_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+insect_model_selected = stepAIC(insect_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -73,7 +74,7 @@ AIC(insect_model, insect_model_selected)
 ```
 
 ```{r}
-insect_model_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, insect_data))
+insect_model_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, insect_data))
 insect_model_dredge_best = get.models(insect_model_dredge, 1)[[1]]
 summary(insect_model_dredge_best)
 ```
@@ -87,12 +88,12 @@ AIC(insect_model, insect_model_selected, insect_model_dredge_best)
 ### From survey area
 ```{r}
 bird_data = create_data_for_taxa('bird')
-bird_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, bird_data)
+bird_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_data)
 summary(bird_model)
 ```
 
 ```{r}
-bird_model_selected = stepAIC(bird_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+bird_model_selected = stepAIC(bird_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -104,7 +105,7 @@ AIC(bird_model, bird_model_selected)
 ```
 
 ```{r}
-bird_model_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, bird_data))
+bird_model_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_data))
 bird_model_dredge_best = get.models(bird_model_dredge, 1)[[1]]
 summary(bird_model_dredge_best)
 ```
@@ -115,7 +116,21 @@ AIC(bird_model, bird_model_selected, bird_model_dredge_best)
 
 ### From 50m buffer around survey area
 ```{r}
-habitat_structure_predictors_from_buffer = read_csv('input/5/ground_cover_classification-1m-in_buffer.csv')
+habitat_structure_predictors_from_buffer_in = read_csv('input/5/ground_cover_classification-1m-in_buffer.csv') %>% rename(herb=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
+habitat_structure_predictors_from_buffer_in
+```
+```{r}
+habitat_structure_predictors_from_buffer_in %>% mutate(total_area = herb + shrb + yng_tr + mat_tr + old_tr) %>% arrange(desc(total_area))
+```
+
+```{r}
+scale = 400 / 12260
+habitat_structure_predictors_from_buffer = habitat_structure_predictors_from_buffer_in %>% mutate(
+  herb = ceiling(herb * scale),
+  shrb = ceiling(shrb * scale),
+  yng_tr = ceiling(yng_tr * scale),
+  mat_tr = ceiling(mat_tr * scale),
+  old_tr = ceiling(old_tr * scale))
 habitat_structure_predictors_from_buffer
 ```
 
@@ -132,12 +147,12 @@ create_data_from_buffer_for_birds = function() {
 
 ```{r}
 bird_buf_data = create_data_from_buffer_for_birds()
-bird_buf_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, bird_buf_data)
+bird_buf_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_buf_data)
 summary(bird_buf_model)
 ```
 
 ```{r}
-bird_buf_model_selected = stepAIC(bird_buf_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+bird_buf_model_selected = stepAIC(bird_buf_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -149,7 +164,7 @@ AIC(bird_buf_model, bird_buf_model_selected)
 ```
 
 ```{r}
-bird_model_buf_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, bird_buf_data))
+bird_model_buf_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_buf_data))
 bird_model_buf_dredge_best = get.models(bird_model_buf_dredge, 1)[[1]]
 summary(bird_model_buf_dredge_best)
 ```
@@ -162,12 +177,12 @@ AIC(bird_buf_model, bird_buf_model_selected, bird_model_buf_dredge_best)
 ## Habitat structure for plants
 ```{r}
 plant_data = create_data_for_taxa('plant')
-plant_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, plant_data)
+plant_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, plant_data)
 summary(plant_model)
 ```
 
 ```{r}
-plant_model_selected = stepAIC(plant_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+plant_model_selected = stepAIC(plant_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -179,7 +194,7 @@ AIC(plant_model, plant_model_selected)
 ```
 
 ```{r}
-plant_model_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, plant_data))
+plant_model_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, plant_data))
 plant_model_dredge_best = get.models(plant_model_dredge, 1)[[1]]
 summary(plant_model_dredge_best)
 ```
@@ -187,4 +202,104 @@ summary(plant_model_dredge_best)
 ```{r}
 AIC(plant_model, plant_model_selected, plant_model_dredge_best)
 ```
+
+# Plot dredge results
+```{r}
+.coefarr.avg = function(cfarr, weight, revised.var, full, alpha) {	
+    weight <- weight / sum(weight)
+    nCoef <- dim(cfarr)[3L]
+    if(full) {
+      nas <- is.na(cfarr[, 1L, ]) & is.na(cfarr[, 2L, ])
+      cfarr[, 1L, ][nas] <- cfarr[, 2L, ][nas] <- 0
+      #cfarr[, 1L:2L, ][is.na(cfarr[, 1L:2L, ])] <- 0
+      if(!all(is.na(cfarr[, 3L, ])))
+        cfarr[ ,3L, ][is.na(cfarr[ , 3L, ])] <- Inf
+    }
+    
+    avgcoef <- array(dim = c(nCoef, 5L),
+                     dimnames = list(dimnames(cfarr)[[3L]], c("Estimate",
+                                                              "Std. Error", "Adjusted SE", "Lower CI", "Upper CI")))
+    for(i in seq_len(nCoef))
+      avgcoef[i, ] <- par.avg(cfarr[, 1L, i], cfarr[, 2L, i], weight,
+                              df = cfarr[, 3L, i], alpha = alpha, revised.var = revised.var)
+    
+    avgcoef[is.nan(avgcoef)] <- NA
+    return(avgcoef)
+  }
+
+.makecoefmat = function(cf) {
+  no.ase <- all(is.na(cf[, 3L]))
+  z <- abs(cf[, 1L] / cf[, if(no.ase) 2L else 3L])
+  pval <- 2 * pnorm(z, lower.tail = FALSE)
+  cbind(cf[, if(no.ase) 1L:2L else 1L:3L, drop = FALSE],
+        `z value` = z, `Pr(>|z|)` = zapsmall(pval))
+}
+
+model_average <- function(dredge_result) {
+  summary(model.avg(dredge_result))
+}
+
+dredge_summary <- function(model_sum) {
+  # just return the estimate and p value
+  weight <- model_sum$msTable[, 5L]
+  
+  coefmat.full <- as.data.frame(.makecoefmat(.coefarr.avg(model_sum$coefArray, weight,
+                                                          attr(model_sum, "revised.var"), TRUE, 0.05)))
+  coefmat.full <- coefmat.full[-c(1), c(1, 2, 5)]
+  names(coefmat.full) <- c("estimate", "error", "p")
+  coefmat.full <- tibble::rownames_to_column(coefmat.full, "explanatory")
+  
+  coefmat.full
+}
+
+plot_vsurp_result = function(taxa_name, result_table, limit) {
+  neg_limit = -1 * limit
+  
+  ggplot(result_table, aes(y=explanatory, x=estimate)) + 
+    geom_line() +
+    geom_point()+
+    geom_errorbar(aes(xmin=estimate-error, xmax=estimate+error), width=.2,
+                   position=position_dodge(0.05)) +
+    geom_vline(xintercept=0, linetype="dotted") +
+    xlab('Increase in proportion of group presence\n± Standard Error') + ylab('Predictor') +
+    labs(title = taxa_name) +
+    scale_x_continuous(limits = c(neg_limit, limit)) +
+    theme_bw() +
+    theme(legend.justification = "top")
+}
+```
+
+## Insects
+```{r}
+insect_model_avg = model_average(insect_model_dredge)
+insect_sum = dredge_summary(insect_model_avg)
+```
+
+```{r}
+plot_vsurp_result('insect', insect_sum, 0.025)
+```
+
+## Birds (within buffer)
+```{r}
+bird_buf_model_avg = model_average(bird_model_buf_dredge)
+bird_buf_sum = dredge_summary(bird_buf_model_avg)
+```
+
+```{r}
+plot_vsurp_result('bird', bird_buf_sum, 0.05)
+```
+
+
+## Plants
+```{r}
+plant_model_avg = model_average(plant_model_dredge)
+plant_sum = dredge_summary(plant_model_avg)
+```
+
+```{r}
+plot_vsurp_result('plant', plant_sum, 0.025)
+```
+
+
+
 
