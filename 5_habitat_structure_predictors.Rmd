@@ -31,6 +31,7 @@ habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.
 habitat_structure_predictors
 ```
 
+
 ```{r}
 create_data_for_taxa = function(taxa_name) {
   present_records = taxa_richness_per_grid %>% filter(taxa_group == taxa_name) %>% left_join(habitat_structure_predictors, by = 'title')
@@ -48,6 +49,7 @@ insect_data = create_data_for_taxa('insect')
 insect_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, insect_data)
 summary(insect_model)
 ```
+
 ```{r}
 model_interactions <- lm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^2, insect_data)
 summary(model_interactions)
@@ -61,6 +63,7 @@ summary(model_interactions)
 ```{r}
 insect_model_selected = stepAIC(insect_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
 ```
+
 ```{r}
 summary(insect_model_selected)
 ```
@@ -80,6 +83,8 @@ AIC(insect_model, insect_model_selected, insect_model_dredge_best)
 ```
 
 ## Habitat structure for birds
+
+### From survey area
 ```{r}
 bird_data = create_data_for_taxa('bird')
 bird_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, bird_data)
@@ -107,6 +112,52 @@ summary(bird_model_dredge_best)
 ```{r}
 AIC(bird_model, bird_model_selected, bird_model_dredge_best)
 ```
+
+### From 50m buffer around survey area
+```{r}
+habitat_structure_predictors_from_buffer = read_csv('input/5/ground_cover_classification-1m-in_buffer.csv')
+habitat_structure_predictors_from_buffer
+```
+
+```{r}
+create_data_from_buffer_for_birds = function() {
+  taxa_name = 'bird'
+  present_records = taxa_richness_per_grid %>% filter(taxa_group == taxa_name) %>% left_join(habitat_structure_predictors_from_buffer, by = 'title')
+  
+  absent_records = taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% filter(!(title %in% present_records$title)) %>% left_join(habitat_structure_predictors_from_buffer, by = 'title') %>% mutate(richness = 0, taxa_group = taxa_name)
+  
+  rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title) %>% dplyr::select(-taxa_group)
+}
+```
+
+```{r}
+bird_buf_data = create_data_from_buffer_for_birds()
+bird_buf_model = glm(richness ~ herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage, gaussian, bird_buf_data)
+summary(bird_buf_model)
+```
+
+```{r}
+bird_buf_model_selected = stepAIC(bird_buf_model, scope = ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^5, direction = "both")
+```
+
+```{r}
+summary(bird_buf_model_selected)
+```
+
+```{r}
+AIC(bird_buf_model, bird_buf_model_selected)
+```
+
+```{r}
+bird_model_buf_dredge = dredge(glm(richness ~ (herbaceous_coverage + shrub_coverage + young_tree_coverage + mature_tree_coverage + old_tree_coverage)^3, gaussian, bird_buf_data))
+bird_model_buf_dredge_best = get.models(bird_model_buf_dredge, 1)[[1]]
+summary(bird_model_buf_dredge_best)
+```
+
+```{r}
+AIC(bird_buf_model, bird_buf_model_selected, bird_model_buf_dredge_best)
+```
+
 
 ## Habitat structure for plants
 ```{r}
