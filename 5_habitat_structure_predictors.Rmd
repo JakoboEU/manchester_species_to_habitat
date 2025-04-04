@@ -10,7 +10,10 @@ library(readr)
 library(MASS)
 library(MuMIn)
 library(ggplot2)
+library(ggpubr)
+library(cowplot)
 options(na.action = "na.fail")
+set.seed(123456)
 ```
 
 # Calculate taxa richness per survey square
@@ -300,6 +303,227 @@ plant_sum = dredge_summary(plant_model_avg)
 plot_vsurp_result('plant', plant_sum, 0.025)
 ```
 
+# Explore interactions
+
+## Insects
+```{r}
+summary(insect_model_dredge_best)
+```
+Call:
+glm(formula = richness ~ herb + mat_tr + shrb + herb:mat_tr + 
+    herb:shrb + mat_tr:shrb + herb:mat_tr:shrb + 1, family = gaussian, 
+    data = insect_data)
+
+Coefficients:
+                   Estimate Std. Error t value Pr(>|t|)    
+(Intercept)       4.423e-01  1.113e-01   3.973  8.4e-05 ***
+herb              2.889e-04  3.908e-04   0.739 0.460146    
+mat_tr            3.851e-03  1.310e-03   2.939 0.003479 ** 
+shrb              7.502e-03  5.419e-03   1.384 0.167059    
+herb:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
+herb:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
+mat_tr:shrb      -9.927e-05  4.992e-05  -1.989 0.047428 *  
+herb:mat_tr:shrb  1.015e-06  3.732e-07   2.720 0.006820 ** 
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for gaussian family taken to be 0.6420709)
+
+    Null deviance: 274.16  on 409  degrees of freedom
+Residual deviance: 258.11  on 402  degrees of freedom
+AIC: 991.8
+
+Number of Fisher Scoring iterations: 2
+
+```{r}
+habitat_structure_predictors_insect_pred = habitat_structure_predictors
+habitat_structure_predictors_insect_pred$insect_richness = predict(insect_model_dredge_best, habitat_structure_predictors_insect_pred, type="response")
+```
 
 
+```{r}
+min(habitat_structure_predictors_insect_pred$mat_tr)
+max(habitat_structure_predictors_insect_pred$mat_tr)
+```
+
+```{r}
+mat_tr_bin_edges <- c(0, 100, 200, 300, 400)
+habitat_structure_predictors_insect_pred$mat_tr_bin = cut(habitat_structure_predictors_insect_pred$mat_tr, breaks = mat_tr_bin_edges, include.lowest = TRUE)
+```
+
+
+```{r}
+ggplot(habitat_structure_predictors_insect_pred, aes(x = herb, y = insect_richness, color = factor(mat_tr_bin))) +
+  geom_smooth(size = 1) +
+  labs(title = "Interaction effect of herb and shrub on insect_richness",
+       x = "herb",
+       y = "Predicted insect richness",
+       color = "mat_tr Level") +
+  theme_minimal()
+```
+
+
+```{r}
+ggplot(habitat_structure_predictors_insect_pred, aes(x = shrb, y = insect_richness, color = factor(mat_tr_bin))) +
+  geom_smooth(size = 1) +
+  labs(title = "Interaction effect of herb and shrub on insect_richness",
+       x = "shrb",
+       y = "Predicted insect richness",
+       color = "mat_tr Level") +
+  theme_minimal()
+```
+
+herb:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
+herb:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
+mat_tr:shrb      -9.927e-05  4.992e-05  -1.989 0.047428 * 
+```{r}
+habitat_structure_predictors_insect_pred2 <- expand.grid(
+  mat_tr = seq(min(habitat_structure_predictors$mat_tr), max(habitat_structure_predictors$mat_tr), length.out = 50),
+  shrb = seq(min(habitat_structure_predictors$shrb), max(habitat_structure_predictors$shrb), length.out = 50),
+  herb = seq(min(habitat_structure_predictors$herb), max(habitat_structure_predictors$herb), length.out = 50)
+)
+
+habitat_structure_predictors_insect_pred2 = habitat_structure_predictors_insect_pred2 %>%
+  filter(mat_tr + shrb + herb <= 400)
+
+habitat_structure_predictors_insect_pred2$insect_richness = predict(plant_model_dredge_best, habitat_structure_predictors_insect_pred2, type="response")
+
+p1 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = herb, fill = insect_richness)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "mat_tr", 
+       y = "herb", 
+       fill = "Predicted insect richness") +
+  theme_minimal()
+
+p2 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = shrb, y = herb, fill = insect_richness)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "shrb", 
+       y = "herb", 
+       fill = "Predicted insect richness") +
+  theme_minimal()
+
+p3 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = shrb, fill = insect_richness)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "mat_tr", 
+       y = "shrb", 
+       fill = "Predicted insect richness") +
+  theme_minimal()
+
+legend <- ggpubr::get_legend(
+  # create some space to the left of the legend
+  p1
+)
+
+title <- ggdraw() + 
+  draw_label(
+    "Interaction effects of herb, shrb and mat_tree on insect richness",
+    fontface = 'bold',
+    x = 0,
+    hjust = 0
+  ) +
+  theme(
+    # add margin on the left of the drawing canvas,
+    # so title is aligned with left edge of first plot
+    plot.margin = margin(0, 0, 0, 7)
+  )
+
+pg = plot_grid(
+  nrow = 2, ncol = 2,
+  p1 + theme(legend.position="none"),
+  p2 + theme(legend.position="none"),
+  p3 + theme(legend.position="none"),
+  legend
+)
+plot_grid(nrow = 2, ncol = 1, title, pg, rel_heights = c(0.1, 1))
+ggsave('output/5/insect_predictor_interactions.jpg')
+```
+
+
+## Plants
+
+```{r}
+summary(plant_model_dredge_best)
+```
+glm(formula = richness ~ herb + mat_tr + shrb + herb:shrb + 1, 
+    family = gaussian, data = plant_data)
+
+Coefficients:
+              Estimate Std. Error t value Pr(>|t|)    
+(Intercept)  2.320e+00  1.278e-01  18.154  < 2e-16 ***
+herb        -1.159e-04  4.499e-04  -0.258    0.797    
+mat_tr       4.145e-03  8.603e-04   4.818 2.05e-06 ***
+shrb         2.319e-03  3.705e-03   0.626    0.532    
+herb:shrb    4.803e-05  1.926e-05   2.495    0.013 *  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for gaussian family taken to be 0.9659682)
+
+    Null deviance: 458.39  on 409  degrees of freedom
+Residual deviance: 391.22  on 405  degrees of freedom
+AIC: 1156.3
+
+Number of Fisher Scoring iterations: 2
+
+```{r}
+habitat_structure_predictors_plant_pred = habitat_structure_predictors
+habitat_structure_predictors_plant_pred$plant_richness = predict(plant_model_dredge_best, habitat_structure_predictors_plant_pred, type="response")
+```
+
+
+```{r}
+min(habitat_structure_predictors_plant_pred$shrb)
+max(habitat_structure_predictors_plant_pred$shrb)
+```
+
+```{r}
+shrb_bin_edges <- c(0, 50, 100, 150, 200, 257)
+habitat_structure_predictors_plant_pred$shrb_bin = cut(habitat_structure_predictors_plant_pred$shrb, breaks = shrb_bin_edges, include.lowest = TRUE)
+```
+
+
+```{r}
+ggplot(habitat_structure_predictors_plant_pred, aes(x = herb, y = plant_richness, color = factor(shrb_bin))) +
+  geom_smooth(size = 1) +
+  labs(title = "Interaction effect of herb and shrub on plant richness",
+       x = "herb",
+       y = "Predicted plant richness",
+       color = "shrb Level") +
+  theme_minimal()
+```
+
+```{r}
+habitat_structure_predictors_plant_pred2 <- expand.grid(
+  mat_tr = seq(min(habitat_structure_predictors$mat_tr), max(habitat_structure_predictors$mat_tr), length.out = 50),
+  shrb = seq(min(habitat_structure_predictors$shrb), max(habitat_structure_predictors$shrb), length.out = 50),
+  herb = seq(min(habitat_structure_predictors$herb), max(habitat_structure_predictors$herb), length.out = 50)
+)
+
+habitat_structure_predictors_plant_pred2 = habitat_structure_predictors_plant_pred2 %>%
+  filter(mat_tr + shrb + herb <= 400)
+
+habitat_structure_predictors_plant_pred2$plant_richness = predict(plant_model_dredge_best, habitat_structure_predictors_plant_pred2, type="response")
+
+ggplot(habitat_structure_predictors_plant_pred2, aes(x = herb, y = shrb, fill = plant_richness)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(title = "Interaction effect of herb and shrb on plant richness",
+       x = "herb", 
+       y = "shrb", 
+       fill = "Predicted plant richness") +
+  theme_minimal()
+ggsave('output/5/plant_predictor_interactions.jpg')
+```
+
+## Birds - but including 50m buffer around survey area
+
+```{r}
+summary(bird_model_buf_dredge_best)
+```
 
