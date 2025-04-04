@@ -25,7 +25,7 @@ species_per_grid
 taxa_richness_per_grid = species_per_grid %>% filter(!is.na(title)) %>% dplyr::select(title, species, taxa_group) %>% distinct() %>% group_by(title, taxa_group) %>% dplyr::summarise(richness = n())
 taxa_richness_per_grid
 ```
-
+Check number of distinct survey grids
 ```{r}
 taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% count()
 ```

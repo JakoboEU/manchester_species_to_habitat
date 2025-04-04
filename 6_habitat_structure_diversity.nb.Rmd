@@ -1,0 +1,58 @@
+---
+title: "Investigate habitat diversity metrics"
+output: html_notebook
+---
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(readr)
+library(MASS)
+library(MuMIn)
+library(ggplot2)
+library(ggpubr)
+library(cowplot)
+library(vegan)
+options(na.action = "na.fail")
+set.seed(123456)
+```
+
+# Calculate taxa richness per survey square
+```{r}
+species_per_grid = read_csv('./output/2_species_data_by_habitat_and_taxa_group.csv')
+species_per_grid
+```
+
+```{r}
+taxa_richness_per_grid = species_per_grid %>% filter(!is.na(title)) %>% dplyr::select(title, species, taxa_group) %>% distinct() %>% group_by(title, taxa_group) %>% dplyr::summarise(richness = n())
+taxa_richness_per_grid
+```
+
+```{r}
+habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv')
+habitat_structure_predictors
+```
+
+```{r}
+habitat_structure_predictors$shannon = diversity(habitat_structure_predictors[,-1])
+```
+
+```{r}
+create_data_for_taxa = function(taxa_name) {
+  present_records = taxa_richness_per_grid %>% filter(taxa_group == taxa_name) %>% left_join(habitat_structure_predictors, by = 'title')
+  
+  absent_records = taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% filter(!(title %in% present_records$title)) %>% left_join(habitat_structure_predictors, by = 'title') %>% mutate(richness = 0, taxa_group = taxa_name)
+  
+  rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title) %>% dplyr::select(-taxa_group)
+}
+create_data_for_taxa('insect')
+```
+
+```{r}
+ggplot(create_data_for_taxa('insect'), aes(x = shannon, y = richness)) + geom_point() + geom_smooth(method="lm")
+```
+```{r}
+summary(glm(richness ~ shannon, gaussian, create_data_for_taxa('insect')))
+```
+
+
