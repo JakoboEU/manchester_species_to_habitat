@@ -31,7 +31,7 @@ taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% count()
 ```
 
 ```{r}
-habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv') %>% rename(herb=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
+habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv') %>% rename(gnd_cvr=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
 habitat_structure_predictors
 ```
 
@@ -50,22 +50,22 @@ create_data_for_taxa('insect')
 ## Habitat structure for insects
 ```{r}
 insect_data = create_data_for_taxa('insect')
-insect_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, insect_data)
+insect_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, insect_data)
 summary(insect_model)
 ```
 
 ```{r}
-model_interactions <- lm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^2, insect_data)
+model_interactions <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^2, insect_data)
 summary(model_interactions)
 ```
 
 ```{r}
-model_interactions <- lm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, insect_data)
+model_interactions <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, insect_data)
 summary(model_interactions)
 ```
 
 ```{r}
-insect_model_selected = stepAIC(insect_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+insect_model_selected = stepAIC(insect_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -77,7 +77,7 @@ AIC(insect_model, insect_model_selected)
 ```
 
 ```{r}
-insect_model_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, insect_data))
+insect_model_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, insect_data))
 insect_model_dredge_best = get.models(insect_model_dredge, 1)[[1]]
 summary(insect_model_dredge_best)
 ```
@@ -91,12 +91,12 @@ AIC(insect_model, insect_model_selected, insect_model_dredge_best)
 ### From survey area
 ```{r}
 bird_data = create_data_for_taxa('bird')
-bird_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_data)
+bird_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_data)
 summary(bird_model)
 ```
 
 ```{r}
-bird_model_selected = stepAIC(bird_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+bird_model_selected = stepAIC(bird_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -108,7 +108,7 @@ AIC(bird_model, bird_model_selected)
 ```
 
 ```{r}
-bird_model_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_data))
+bird_model_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_data))
 bird_model_dredge_best = get.models(bird_model_dredge, 1)[[1]]
 summary(bird_model_dredge_best)
 ```
@@ -119,17 +119,17 @@ AIC(bird_model, bird_model_selected, bird_model_dredge_best)
 
 ### From 50m buffer around survey area
 ```{r}
-habitat_structure_predictors_from_buffer_in = read_csv('input/5/ground_cover_classification-1m-in_buffer.csv') %>% rename(herb=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
+habitat_structure_predictors_from_buffer_in = read_csv('input/5/ground_cover_classification-1m-in_buffer.csv') %>% rename(gnd_cvr=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
 habitat_structure_predictors_from_buffer_in
 ```
 ```{r}
-habitat_structure_predictors_from_buffer_in %>% mutate(total_area = herb + shrb + yng_tr + mat_tr + old_tr) %>% arrange(desc(total_area))
+habitat_structure_predictors_from_buffer_in %>% mutate(total_area = gnd_cvr + shrb + yng_tr + mat_tr + old_tr) %>% arrange(desc(total_area))
 ```
 
 ```{r}
 scale = 400 / 12260
 habitat_structure_predictors_from_buffer = habitat_structure_predictors_from_buffer_in %>% mutate(
-  herb = ceiling(herb * scale),
+  gnd_cvr = ceiling(gnd_cvr * scale),
   shrb = ceiling(shrb * scale),
   yng_tr = ceiling(yng_tr * scale),
   mat_tr = ceiling(mat_tr * scale),
@@ -150,12 +150,12 @@ create_data_from_buffer_for_birds = function() {
 
 ```{r}
 bird_buf_data = create_data_from_buffer_for_birds()
-bird_buf_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_buf_data)
+bird_buf_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_buf_data)
 summary(bird_buf_model)
 ```
 
 ```{r}
-bird_buf_model_selected = stepAIC(bird_buf_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+bird_buf_model_selected = stepAIC(bird_buf_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -167,7 +167,7 @@ AIC(bird_buf_model, bird_buf_model_selected)
 ```
 
 ```{r}
-bird_model_buf_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_buf_data))
+bird_model_buf_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_buf_data))
 bird_model_buf_dredge_best = get.models(bird_model_buf_dredge, 1)[[1]]
 summary(bird_model_buf_dredge_best)
 ```
@@ -180,12 +180,12 @@ AIC(bird_buf_model, bird_buf_model_selected, bird_model_buf_dredge_best)
 ## Habitat structure for plants
 ```{r}
 plant_data = create_data_for_taxa('plant')
-plant_model = glm(richness ~ herb + shrb + yng_tr + mat_tr + old_tr, gaussian, plant_data)
+plant_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, plant_data)
 summary(plant_model)
 ```
 
 ```{r}
-plant_model_selected = stepAIC(plant_model, scope = ~ (herb + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+plant_model_selected = stepAIC(plant_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
@@ -197,7 +197,7 @@ AIC(plant_model, plant_model_selected)
 ```
 
 ```{r}
-plant_model_dredge = dredge(glm(richness ~ (herb + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, plant_data))
+plant_model_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, plant_data))
 plant_model_dredge_best = get.models(plant_model_dredge, 1)[[1]]
 summary(plant_model_dredge_best)
 ```
@@ -310,20 +310,20 @@ plot_vsurp_result('plant', plant_sum, 0.025)
 summary(insect_model_dredge_best)
 ```
 Call:
-glm(formula = richness ~ herb + mat_tr + shrb + herb:mat_tr + 
-    herb:shrb + mat_tr:shrb + herb:mat_tr:shrb + 1, family = gaussian, 
+glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:mat_tr + 
+    gnd_cvr:shrb + mat_tr:shrb + gnd_cvr:mat_tr:shrb + 1, family = gaussian, 
     data = insect_data)
 
 Coefficients:
                    Estimate Std. Error t value Pr(>|t|)    
 (Intercept)       4.423e-01  1.113e-01   3.973  8.4e-05 ***
-herb              2.889e-04  3.908e-04   0.739 0.460146    
+gnd_cvr              2.889e-04  3.908e-04   0.739 0.460146    
 mat_tr            3.851e-03  1.310e-03   2.939 0.003479 ** 
 shrb              7.502e-03  5.419e-03   1.384 0.167059    
-herb:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
-herb:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
+gnd_cvr:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
+gnd_cvr:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
 mat_tr:shrb      -9.927e-05  4.992e-05  -1.989 0.047428 *  
-herb:mat_tr:shrb  1.015e-06  3.732e-07   2.720 0.006820 ** 
+gnd_cvr:mat_tr:shrb  1.015e-06  3.732e-07   2.720 0.006820 ** 
 ---
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -353,10 +353,10 @@ habitat_structure_predictors_insect_pred$mat_tr_bin = cut(habitat_structure_pred
 
 
 ```{r}
-ggplot(habitat_structure_predictors_insect_pred, aes(x = herb, y = insect_richness, color = factor(mat_tr_bin))) +
+ggplot(habitat_structure_predictors_insect_pred, aes(x = gnd_cvr, y = insect_richness, color = factor(mat_tr_bin))) +
   geom_smooth(size = 1) +
-  labs(title = "Interaction effect of herb and shrub on insect_richness",
-       x = "herb",
+  labs(title = "Interaction effect of ground cover and shrubs on insect_richness",
+       x = "gnd_cvr",
        y = "Predicted insect richness",
        color = "mat_tr Level") +
   theme_minimal()
@@ -366,53 +366,62 @@ ggplot(habitat_structure_predictors_insect_pred, aes(x = herb, y = insect_richne
 ```{r}
 ggplot(habitat_structure_predictors_insect_pred, aes(x = shrb, y = insect_richness, color = factor(mat_tr_bin))) +
   geom_smooth(size = 1) +
-  labs(title = "Interaction effect of herb and shrub on insect_richness",
+  labs(title = "Interaction effect of ground cover and shrubs on insect_richness",
        x = "shrb",
        y = "Predicted insect richness",
        color = "mat_tr Level") +
   theme_minimal()
 ```
+```{r}
+label_percent_of_400 = function(x) paste0(x*0.25, "%")
+```
 
-herb:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
-herb:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
+gnd_cvr:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
+gnd_cvr:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
 mat_tr:shrb      -9.927e-05  4.992e-05  -1.989 0.047428 * 
 ```{r}
 habitat_structure_predictors_insect_pred2 <- expand.grid(
   mat_tr = seq(min(habitat_structure_predictors$mat_tr), max(habitat_structure_predictors$mat_tr), length.out = 50),
   shrb = seq(min(habitat_structure_predictors$shrb), max(habitat_structure_predictors$shrb), length.out = 50),
-  herb = seq(min(habitat_structure_predictors$herb), max(habitat_structure_predictors$herb), length.out = 50)
+  gnd_cvr = seq(min(habitat_structure_predictors$gnd_cvr), max(habitat_structure_predictors$gnd_cvr), length.out = 50)
 )
 
 habitat_structure_predictors_insect_pred2 = habitat_structure_predictors_insect_pred2 %>%
-  filter(mat_tr + shrb + herb <= 400)
+  filter(mat_tr + shrb + gnd_cvr <= 400)
 
 habitat_structure_predictors_insect_pred2$insect_richness = predict(plant_model_dredge_best, habitat_structure_predictors_insect_pred2, type="response")
 
-p1 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = herb, fill = insect_richness)) +
+p1 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = gnd_cvr, fill = insect_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
   labs(
-       x = "mat_tr", 
-       y = "herb", 
+       x = "Mature tree cover", 
+       y = "Ground cover", 
        fill = "Predicted insect richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
   theme_minimal()
 
-p2 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = shrb, y = herb, fill = insect_richness)) +
+p2 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = shrb, y = gnd_cvr, fill = insect_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
   labs(
-       x = "shrb", 
-       y = "herb", 
+       x = "Shrub cover", 
+       y = "Ground cover", 
        fill = "Predicted insect richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
   theme_minimal()
 
 p3 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = shrb, fill = insect_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
   labs(
-       x = "mat_tr", 
-       y = "shrb", 
+       x = "Mature tree cover", 
+       y = "Shrub cover", 
        fill = "Predicted insect richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
   theme_minimal()
 
 legend <- ggpubr::get_legend(
@@ -422,7 +431,7 @@ legend <- ggpubr::get_legend(
 
 title <- ggdraw() + 
   draw_label(
-    "Interaction effects of herb, shrb and mat_tree on insect richness",
+    "Interaction effects of ground cover, shrbs and mature trees on insect richness",
     fontface = 'bold',
     x = 0,
     hjust = 0
@@ -450,16 +459,16 @@ ggsave('output/5/insect_predictor_interactions.jpg')
 ```{r}
 summary(plant_model_dredge_best)
 ```
-glm(formula = richness ~ herb + mat_tr + shrb + herb:shrb + 1, 
+glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:shrb + 1, 
     family = gaussian, data = plant_data)
 
 Coefficients:
               Estimate Std. Error t value Pr(>|t|)    
 (Intercept)  2.320e+00  1.278e-01  18.154  < 2e-16 ***
-herb        -1.159e-04  4.499e-04  -0.258    0.797    
+gnd_cvr        -1.159e-04  4.499e-04  -0.258    0.797    
 mat_tr       4.145e-03  8.603e-04   4.818 2.05e-06 ***
 shrb         2.319e-03  3.705e-03   0.626    0.532    
-herb:shrb    4.803e-05  1.926e-05   2.495    0.013 *  
+gnd_cvr:shrb    4.803e-05  1.926e-05   2.495    0.013 *  
 ---
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -489,12 +498,12 @@ habitat_structure_predictors_plant_pred$shrb_bin = cut(habitat_structure_predict
 
 
 ```{r}
-ggplot(habitat_structure_predictors_plant_pred, aes(x = herb, y = plant_richness, color = factor(shrb_bin))) +
+ggplot(habitat_structure_predictors_plant_pred, aes(x = gnd_cvr, y = plant_richness, color = factor(shrb_bin))) +
   geom_smooth(size = 1) +
-  labs(title = "Interaction effect of herb and shrub on plant richness",
-       x = "herb",
+  labs(title = "Interaction effect of ground cover and shrubs on plant richness",
+       x = "gnd_cvr",
        y = "Predicted plant richness",
-       color = "shrb Level") +
+       color = "Shrub cover") +
   theme_minimal()
 ```
 
@@ -502,21 +511,24 @@ ggplot(habitat_structure_predictors_plant_pred, aes(x = herb, y = plant_richness
 habitat_structure_predictors_plant_pred2 <- expand.grid(
   mat_tr = seq(min(habitat_structure_predictors$mat_tr), max(habitat_structure_predictors$mat_tr), length.out = 50),
   shrb = seq(min(habitat_structure_predictors$shrb), max(habitat_structure_predictors$shrb), length.out = 50),
-  herb = seq(min(habitat_structure_predictors$herb), max(habitat_structure_predictors$herb), length.out = 50)
+  gnd_cvr = seq(min(habitat_structure_predictors$gnd_cvr), max(habitat_structure_predictors$gnd_cvr), length.out = 50)
 )
 
 habitat_structure_predictors_plant_pred2 = habitat_structure_predictors_plant_pred2 %>%
-  filter(mat_tr + shrb + herb <= 400)
+  filter(mat_tr + shrb + gnd_cvr <= 400)
 
 habitat_structure_predictors_plant_pred2$plant_richness = predict(plant_model_dredge_best, habitat_structure_predictors_plant_pred2, type="response")
 
-ggplot(habitat_structure_predictors_plant_pred2, aes(x = herb, y = shrb, fill = plant_richness)) +
+ggplot(habitat_structure_predictors_plant_pred2, aes(x = gnd_cvr, y = shrb, fill = plant_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
-  labs(title = "Interaction effect of herb and shrb on plant richness",
-       x = "herb", 
+  labs(title = "Interaction effect of ground cover and shrubs on plant richness",
+       x = "gnd_cvr", 
        y = "shrb", 
        fill = "Predicted plant richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  xlab('Ground cover') + ylab("Shrub cover") +
   theme_minimal()
 ggsave('output/5/plant_predictor_interactions.jpg')
 ```
