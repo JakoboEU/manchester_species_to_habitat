@@ -34,13 +34,36 @@ taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% count()
 habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv') %>% rename(gnd_cvr=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
 habitat_structure_predictors
 ```
+```{r}
+habitat_complexity = read_csv('input/5/ground_cover_fragstat-1m.csv') %>% 
+  dplyr::select(title, metric, value) %>%
+  pivot_wider(names_from = metric, values_from = value)
 
+habitat_complexity
+```
+```{r}
+habitat_complexity %>% filter(is.na(contag)) %>% filter(title %in% taxa_richness_per_grid$title)
+```
+```{r}
+habitat_complexity$ed[is.na(habitat_complexity$ed)] = 0
+habitat_complexity$shdi[is.na(habitat_complexity$shdi)] = 0
+habitat_complexity$contag[is.na(habitat_complexity$contag) & habitat_complexity$shdi == 0] = 0
+```
 
 ```{r}
 create_data_for_taxa = function(taxa_name) {
-  present_records = taxa_richness_per_grid %>% filter(taxa_group == taxa_name) %>% left_join(habitat_structure_predictors, by = 'title')
+  present_records = taxa_richness_per_grid %>% 
+    filter(taxa_group == taxa_name) %>% 
+    left_join(habitat_structure_predictors, by = 'title') %>% 
+    left_join(habitat_complexity, by = 'title') 
   
-  absent_records = taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% filter(!(title %in% present_records$title)) %>% left_join(habitat_structure_predictors, by = 'title') %>% mutate(richness = 0, taxa_group = taxa_name)
+  absent_records = taxa_richness_per_grid %>% 
+    dplyr::select(title) %>% 
+    distinct() %>% 
+    filter(!(title %in% present_records$title)) %>% 
+    left_join(habitat_structure_predictors, by = 'title') %>% 
+    left_join(habitat_complexity, by = 'title') %>% 
+    mutate(richness = 0, taxa_group = taxa_name)
   
   rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title) %>% dplyr::select(-taxa_group)
 }
@@ -48,47 +71,125 @@ create_data_for_taxa('insect')
 ```
 
 ## Habitat structure for insects
+
+### Vegetation category
 ```{r}
 insect_data = create_data_for_taxa('insect')
-insect_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, insect_data)
-summary(insect_model)
+insect_model_cat = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, insect_data)
+summary(insect_model_cat)
 ```
 
 ```{r}
-model_interactions <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^2, insect_data)
-summary(model_interactions)
+model_interactions_cat <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^2, insect_data)
+summary(model_interactions_cat)
 ```
 
 ```{r}
-model_interactions <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, insect_data)
-summary(model_interactions)
+model_interactions_cat <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, insect_data)
+summary(model_interactions_cat)
 ```
 
 ```{r}
-insect_model_selected = stepAIC(insect_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+insect_model_selected_cat = stepAIC(insect_model_cat, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
-summary(insect_model_selected)
+summary(insect_model_selected_cat)
 ```
 
 ```{r}
-AIC(insect_model, insect_model_selected)
+AIC(insect_model_cat, insect_model_selected_cat)
 ```
 
 ```{r}
-insect_model_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, insect_data))
-insect_model_dredge_best = get.models(insect_model_dredge, 1)[[1]]
-summary(insect_model_dredge_best)
+insect_model_dredge_cat = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, insect_data))
+insect_model_dredge_best_cat = get.models(insect_model_dredge_cat, 1)[[1]]
+summary(insect_model_dredge_best_cat)
 ```
 
 ```{r}
-AIC(insect_model, insect_model_selected, insect_model_dredge_best)
+AIC(insect_model_cat, insect_model_selected_cat, insect_model_dredge_best_cat)
+```
+
+### Vegetation complexity
+```{r}
+insect_model_str = glm(richness ~ ed + contag + shdi, gaussian, insect_data)
+summary(insect_model_str)
+```
+
+```{r}
+insect_model_selected_str = stepAIC(insect_model_str, scope = ~ (ed + contag + shdi)^5, direction = "both")
+```
+
+```{r}
+summary(insect_model_selected_str)
+```
+
+```{r}
+AIC(insect_model_str, insect_model_selected_str)
+```
+
+```{r}
+insect_model_dredge_str = dredge(glm(richness ~ (ed + contag + shdi)^3, gaussian, insect_data))
+insect_model_dredge_best_str = get.models(insect_model_dredge_str, 1)[[1]]
+summary(insect_model_dredge_best_str)
+```
+
+```{r}
+AIC(insect_model_str, insect_model_selected_str, insect_model_dredge_best_str)
+```
+
+### Vegetation category and complexity
+```{r}
+insect_model_all = glm(richness ~ ed + shdi + gnd_cvr + shrb + mat_tr, gaussian, insect_data)
+summary(insect_model_all)
+```
+```{r}
+insect_model_selected_all = stepAIC(insect_model_all, scope = ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^5, direction = "both")
+```
+
+```{r}
+summary(insect_model_selected_all)
+```
+
+What does a smaller ED mean?
+➤ Fewer or shorter edges relative to area
+
+This could result from:
+
+    Larger, more cohesive patches (less fragmentation)
+
+    Fewer class transitions (e.g., big block of one habitat type)
+
+    Simpler patch shapes (more compact, less perimeter)
+
+    Lower habitat diversity or dominance of one class
+    
+Ecological interpretation (depends on context!):
+ * Lower ED means...	Possible ecological meaning
+ * Fewer transitions between habitats	Lower habitat heterogeneity
+ * Large, intact habitat blocks	Possibly better for interior species
+ * Less fragmentation	Lower edge effects (e.g., less exposure to predators, wind)
+ * Simpler patch shapes	Lower shape complexity — maybe more stable environments
+
+```{r}
+insect_model_dredge_all = dredge(glm(richness ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^3, gaussian, insect_data))
+insect_model_dredge_best_all = get.models(insect_model_dredge_all, 1)[[1]]
+summary(insect_model_dredge_best_all)
+```
+
+```{r}
+AIC(insect_model_all, insect_model_dredge_best_all)
+```
+
+
+```{r}
+AIC(insect_model_dredge_best_cat, insect_model_dredge_best_str, insect_model_dredge_best_all)
 ```
 
 ## Habitat structure for birds
 
-### From survey area
+### Vegetation category from survey area
 ```{r}
 bird_data = create_data_for_taxa('bird')
 bird_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_data)
@@ -117,11 +218,29 @@ summary(bird_model_dredge_best)
 AIC(bird_model, bird_model_selected, bird_model_dredge_best)
 ```
 
-### From 50m buffer around survey area
+### Vegetation category from 50m buffer around survey area
 ```{r}
 habitat_structure_predictors_from_buffer_in = read_csv('input/5/ground_cover_classification-1m-in_buffer.csv') %>% rename(gnd_cvr=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
 habitat_structure_predictors_from_buffer_in
 ```
+```{r}
+habitat_complexity_predictors_from_buffer_in = read_csv('input/5/ground_cover_fragstat-1m-in_buffer.csv') %>%
+  dplyr::select(title, metric, value) %>%
+  pivot_wider(names_from = metric, values_from = value)
+
+habitat_complexity_predictors_from_buffer_in
+```
+```{r}
+habitat_complexity_predictors_from_buffer_in %>% filter(is.na(contag)) %>% filter(title %in% taxa_richness_per_grid$title)
+```
+
+```{r}
+habitat_complexity_predictors_from_buffer_in$ed[is.na(habitat_complexity_predictors_from_buffer_in$ed)] = 0
+habitat_complexity_predictors_from_buffer_in$shdi[is.na(habitat_complexity_predictors_from_buffer_in$shdi)] = 0
+habitat_complexity_predictors_from_buffer_in$contag[is.na(habitat_complexity_predictors_from_buffer_in$contag) & habitat_complexity_predictors_from_buffer_in$shdi == 0] = 0
+```
+
+
 ```{r}
 habitat_structure_predictors_from_buffer_in %>% mutate(total_area = gnd_cvr + shrb + yng_tr + mat_tr + old_tr) %>% arrange(desc(total_area))
 ```
@@ -140,9 +259,18 @@ habitat_structure_predictors_from_buffer
 ```{r}
 create_data_from_buffer_for_birds = function() {
   taxa_name = 'bird'
-  present_records = taxa_richness_per_grid %>% filter(taxa_group == taxa_name) %>% left_join(habitat_structure_predictors_from_buffer, by = 'title')
+  present_records = taxa_richness_per_grid %>% 
+    filter(taxa_group == taxa_name) %>% 
+    left_join(habitat_structure_predictors_from_buffer, by = 'title') %>%
+    left_join(habitat_complexity_predictors_from_buffer_in, by = 'title')
   
-  absent_records = taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% filter(!(title %in% present_records$title)) %>% left_join(habitat_structure_predictors_from_buffer, by = 'title') %>% mutate(richness = 0, taxa_group = taxa_name)
+  absent_records = taxa_richness_per_grid %>% 
+    dplyr::select(title) %>% 
+    distinct() %>% 
+    filter(!(title %in% present_records$title)) %>% 
+    left_join(habitat_structure_predictors_from_buffer, by = 'title') %>%
+    left_join(habitat_complexity_predictors_from_buffer_in, by = 'title') %>% 
+    mutate(richness = 0, taxa_group = taxa_name)
   
   rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title) %>% dplyr::select(-taxa_group)
 }
@@ -150,61 +278,180 @@ create_data_from_buffer_for_birds = function() {
 
 ```{r}
 bird_buf_data = create_data_from_buffer_for_birds()
-bird_buf_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_buf_data)
-summary(bird_buf_model)
+bird_buf_model_cat = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_buf_data)
+summary(bird_buf_model_cat)
 ```
 
 ```{r}
-bird_buf_model_selected = stepAIC(bird_buf_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+bird_buf_model_selected_cat = stepAIC(bird_buf_model_cat, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
-summary(bird_buf_model_selected)
+summary(bird_buf_model_selected_cat)
 ```
 
 ```{r}
-AIC(bird_buf_model, bird_buf_model_selected)
+AIC(bird_buf_model_cat, bird_buf_model_selected_cat)
 ```
 
 ```{r}
-bird_model_buf_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_buf_data))
-bird_model_buf_dredge_best = get.models(bird_model_buf_dredge, 1)[[1]]
-summary(bird_model_buf_dredge_best)
+bird_model_buf_dredge_cat = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_buf_data))
+bird_model_buf_dredge_best_cat = get.models(bird_model_buf_dredge_cat, 1)[[1]]
+summary(bird_model_buf_dredge_best_cat)
 ```
 
 ```{r}
-AIC(bird_buf_model, bird_buf_model_selected, bird_model_buf_dredge_best)
+AIC(bird_buf_model_cat, bird_buf_model_selected_cat, bird_model_buf_dredge_best_cat)
 ```
+
+### Vegetation complexity from 50m buffer around survey area
+```{r}
+bird_buf_model_str = glm(richness ~ ed + contag + shdi, gaussian, bird_buf_data)
+summary(bird_buf_model_str)
+```
+
+```{r}
+bird_model_buf_selected_str = stepAIC(bird_buf_model_str, scope = ~ (ed + contag + shdi)^5, direction = "both")
+```
+
+```{r}
+summary(bird_model_buf_selected_str)
+```
+
+```{r}
+AIC(bird_buf_model_str, bird_model_buf_selected_str)
+```
+
+```{r}
+bird_model_buf_dredge_str = dredge(glm(richness ~ (ed + contag + shdi)^3, gaussian, insect_data))
+bird_model_buf_dredge_best_str = get.models(bird_model_buf_dredge_str, 1)[[1]]
+summary(bird_model_buf_dredge_best_str)
+```
+
+```{r}
+AIC(bird_buf_model_str, bird_model_buf_selected_str, bird_model_buf_dredge_best_str)
+```
+
+### Vegetation category and complexity in 50m buffer
+```{r}
+bird_buf_model_all = glm(richness ~ ed + shdi + gnd_cvr + shrb, gaussian, insect_data)
+summary(bird_buf_model_all)
+```
+
+```{r}
+bird_buf_model_selected_all = stepAIC(bird_buf_model_all, scope = ~ (ed + shdi + gnd_cvr + shrb)^5, direction = "both")
+```
+
+```{r}
+summary(bird_buf_model_selected_all)
+```
+
+```{r}
+bird_buf_model_dredge_all = dredge(glm(richness ~ (ed + shdi + gnd_cvr + shrb)^3, gaussian, insect_data))
+bird_buf_model_dredge_best_all = get.models(bird_buf_model_dredge_all, 1)[[1]]
+summary(bird_buf_model_dredge_best_all)
+```
+
+```{r}
+AIC(bird_buf_model_all, bird_buf_model_dredge_best_all)
+```
+
+```{r}
+AIC(bird_buf_model_cat, bird_buf_model_str, bird_buf_model_all)
+```
+
 
 
 ## Habitat structure for plants
+
+### Vegetation category
 ```{r}
 plant_data = create_data_for_taxa('plant')
-plant_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, plant_data)
-summary(plant_model)
+plant_model_cat = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, plant_data)
+summary(plant_model_cat)
 ```
 
 ```{r}
-plant_model_selected = stepAIC(plant_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+plant_model_selected_cat = stepAIC(plant_model_cat, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
 ```{r}
-summary(plant_model_selected)
+summary(plant_model_selected_cat)
 ```
 
 ```{r}
-AIC(plant_model, plant_model_selected)
+AIC(plant_model_cat, plant_model_selected_cat)
 ```
 
 ```{r}
-plant_model_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, plant_data))
-plant_model_dredge_best = get.models(plant_model_dredge, 1)[[1]]
-summary(plant_model_dredge_best)
+plant_model_dredge_cat = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, plant_data))
+plant_model_dredge_best_cat = get.models(plant_model_dredge_cat, 1)[[1]]
+summary(plant_model_dredge_best_cat)
 ```
 
 ```{r}
-AIC(plant_model, plant_model_selected, plant_model_dredge_best)
+AIC(plant_model_cat, plant_model_selected_cat, plant_model_dredge_best_cat)
 ```
+
+### Vegetation complexity
+```{r}
+plant_model_str = glm(richness ~ ed + contag + shdi, gaussian, plant_data)
+summary(plant_model_str)
+```
+
+```{r}
+plant_model_selected_str = stepAIC(plant_model_str, scope = ~ (ed + contag + shdi)^5, direction = "both")
+```
+
+```{r}
+summary(plant_model_selected_str)
+```
+
+```{r}
+AIC(plant_model_str, plant_model_selected_str)
+```
+
+```{r}
+plant_model_dredge_str = dredge(glm(richness ~ (ed + contag + shdi)^3, gaussian, insect_data))
+plant_model_dredge_best_str = get.models(plant_model_dredge_str, 1)[[1]]
+summary(plant_model_dredge_best_str)
+```
+
+```{r}
+AIC(plant_model_str, plant_model_selected_str, plant_model_dredge_best_str)
+```
+
+### Vegetation category and complexity
+```{r}
+plant_model_all = glm(richness ~ ed + shdi + gnd_cvr + shrb + mat_tr, gaussian, plant_data)
+summary(plant_model_all)
+```
+
+```{r}
+plant_model_selected_all = stepAIC(plant_model_all, scope = ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^5, direction = "both")
+```
+
+```{r}
+summary(plant_model_selected_all)
+```
+
+
+
+```{r}
+plant_model_dredge_all = dredge(glm(richness ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^3, gaussian, plant_data))
+plant_model_dredge_best_all = get.models(plant_model_dredge_all, 1)[[1]]
+summary(plant_model_dredge_best_all)
+```
+
+```{r}
+AIC(plant_model_all, plant_model_dredge_best_all)
+```
+
+
+```{r}
+AIC(plant_model_dredge_best_cat, plant_model_dredge_best_str, plant_model_dredge_best_all)
+```
+
 
 # Plot dredge results
 ```{r}
@@ -274,40 +521,46 @@ plot_vsurp_result = function(taxa_name, result_table, limit) {
 
 ## Insects
 ```{r}
-insect_model_avg = model_average(insect_model_dredge)
+insect_model_avg = model_average(insect_model_dredge_cat)
 insect_sum = dredge_summary(insect_model_avg)
+plot_vsurp_result('insect (category)', insect_sum, 0.025)
+```
+
+
+```{r}
+insect_model_avg = model_average(insect_model_dredge_str)
+insect_sum = dredge_summary(insect_model_avg)
+plot_vsurp_result('insect (structure)', insect_sum, 0.025)
 ```
 
 ```{r}
-plot_vsurp_result('insect', insect_sum, 0.025)
+insect_model_avg = model_average(insect_model_dredge_all)
+insect_sum = dredge_summary(insect_model_avg)
+plot_vsurp_result('insect (all)', insect_sum, 0.025)
 ```
 
 ## Birds (within buffer)
 ```{r}
-bird_buf_model_avg = model_average(bird_model_buf_dredge)
+bird_buf_model_avg = model_average(bird_model_buf_dredge_cat)
 bird_buf_sum = dredge_summary(bird_buf_model_avg)
-```
-
-```{r}
-plot_vsurp_result('bird', bird_buf_sum, 0.05)
+plot_vsurp_result('bird (category)', bird_buf_sum, 0.05)
 ```
 
 
 ## Plants
 ```{r}
-plant_model_avg = model_average(plant_model_dredge)
+plant_model_avg = model_average(plant_model_dredge_cat)
 plant_sum = dredge_summary(plant_model_avg)
-```
-
-```{r}
-plot_vsurp_result('plant', plant_sum, 0.025)
+plot_vsurp_result('plant (category)', plant_sum, 0.025)
 ```
 
 # Explore interactions
 
 ## Insects
+
+### Vegetation category
 ```{r}
-summary(insect_model_dredge_best)
+summary(insect_model_dredge_best_cat)
 ```
 Call:
 glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:mat_tr + 
@@ -337,7 +590,7 @@ Number of Fisher Scoring iterations: 2
 
 ```{r}
 habitat_structure_predictors_insect_pred = habitat_structure_predictors
-habitat_structure_predictors_insect_pred$insect_richness = predict(insect_model_dredge_best, habitat_structure_predictors_insect_pred, type="response")
+habitat_structure_predictors_insect_pred$insect_richness = predict(insect_model_dredge_best_cat, habitat_structure_predictors_insect_pred, type="response")
 ```
 
 
@@ -355,10 +608,10 @@ habitat_structure_predictors_insect_pred$mat_tr_bin = cut(habitat_structure_pred
 ```{r}
 ggplot(habitat_structure_predictors_insect_pred, aes(x = gnd_cvr, y = insect_richness, color = factor(mat_tr_bin))) +
   geom_smooth(size = 1) +
-  labs(title = "Interaction effect of ground cover and shrubs on insect_richness",
-       x = "gnd_cvr",
+  labs(title = "Interaction effect of ground cover and mature trees on insect_richness",
+       x = "Ground cover",
        y = "Predicted insect richness",
-       color = "mat_tr Level") +
+       color = "Mature tree cover Level") +
   theme_minimal()
 ```
 
@@ -366,10 +619,10 @@ ggplot(habitat_structure_predictors_insect_pred, aes(x = gnd_cvr, y = insect_ric
 ```{r}
 ggplot(habitat_structure_predictors_insect_pred, aes(x = shrb, y = insect_richness, color = factor(mat_tr_bin))) +
   geom_smooth(size = 1) +
-  labs(title = "Interaction effect of ground cover and shrubs on insect_richness",
-       x = "shrb",
+  labs(title = "Interaction effect of ground cover and mature trees on insect_richness",
+       x = "Shrub",
        y = "Predicted insect richness",
-       color = "mat_tr Level") +
+       color = "Mature tree cover Level") +
   theme_minimal()
 ```
 ```{r}
@@ -389,7 +642,7 @@ habitat_structure_predictors_insect_pred2 <- expand.grid(
 habitat_structure_predictors_insect_pred2 = habitat_structure_predictors_insect_pred2 %>%
   filter(mat_tr + shrb + gnd_cvr <= 400)
 
-habitat_structure_predictors_insect_pred2$insect_richness = predict(plant_model_dredge_best, habitat_structure_predictors_insect_pred2, type="response")
+habitat_structure_predictors_insect_pred2$insect_richness = predict(plant_model_dredge_best_cat, habitat_structure_predictors_insect_pred2, type="response")
 
 p1 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = gnd_cvr, fill = insect_richness)) +
   geom_tile() +
@@ -453,11 +706,108 @@ plot_grid(nrow = 2, ncol = 1, title, pg, rel_heights = c(0.1, 1))
 ggsave('output/5/insect_predictor_interactions.jpg')
 ```
 
+### Vegetation category and complexity
+```{r}
+summary(insect_model_dredge_best_all)
+```
+
+Call:
+glm(formula = richness ~ ed + gnd_cvr + mat_tr + shrb + gnd_cvr:mat_tr + 
+    gnd_cvr:shrb + mat_tr:shrb + gnd_cvr:mat_tr:shrb + 1, family = gaussian, 
+    data = insect_data)
+
+Coefficients:
+                      Estimate Std. Error t value Pr(>|t|)    
+(Intercept)          5.167e-01  1.184e-01   4.364 1.63e-05 ***
+ed                  -3.987e-05  2.208e-05  -1.806 0.071635 .  
+gnd_cvr              1.286e-04  3.996e-04   0.322 0.747758    
+mat_tr               4.956e-03  1.443e-03   3.435 0.000653 ***
+shrb                 1.140e-02  5.820e-03   1.959 0.050772 .  
+gnd_cvr:mat_tr      -3.388e-05  1.040e-05  -3.257 0.001222 ** 
+gnd_cvr:shrb        -2.487e-05  2.376e-05  -1.046 0.295961    
+mat_tr:shrb         -1.209e-04  5.121e-05  -2.362 0.018671 *  
+gnd_cvr:mat_tr:shrb  1.163e-06  3.811e-07   3.052 0.002428 ** 
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for gaussian family taken to be 0.6384777)
+
+    Null deviance: 274.16  on 409  degrees of freedom
+Residual deviance: 256.03  on 401  degrees of freedom
+AIC: 990.48
+
+Number of Fisher Scoring iterations: 2
+
+
+```{r}
+habitat_structure_predictors_insect_pred2$insect_richness_all = predict(plant_model_dredge_best_all, habitat_structure_predictors_insect_pred2, type="response")
+
+p1_all = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = gnd_cvr, fill = insect_richness_all)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "Mature tree cover", 
+       y = "Ground cover", 
+       fill = "Predicted insect richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  theme_minimal()
+
+p2_all = ggplot(habitat_structure_predictors_insect_pred2, aes(x = shrb, y = gnd_cvr, fill = insect_richness_all)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "Shrub cover", 
+       y = "Ground cover", 
+       fill = "Predicted insect richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  theme_minimal()
+
+p3_all = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = shrb, fill = insect_richness_all)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "Mature tree cover", 
+       y = "Shrub cover", 
+       fill = "Predicted insect richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  theme_minimal()
+
+legend_all <- ggpubr::get_legend(
+  # create some space to the left of the legend
+  p1_all
+)
+
+title_all <- ggdraw() + 
+  draw_label(
+    "Interaction effects of ground cover, shrbs and mature trees on insect richness (from model including complexity)",
+    fontface = 'bold',
+    x = 0,
+    hjust = 0
+  ) +
+  theme(
+    # add margin on the left of the drawing canvas,
+    # so title is aligned with left edge of first plot
+    plot.margin = margin(0, 0, 0, 7)
+  )
+
+pg = plot_grid(
+  nrow = 2, ncol = 2,
+  p1_all + theme(legend.position="none"),
+  p2_all + theme(legend.position="none"),
+  p3_all + theme(legend.position="none"),
+  legend_all
+)
+plot_grid(nrow = 2, ncol = 1, title, pg, rel_heights = c(0.1, 1))
+```
 
 ## Plants
 
+### Vegetation category
 ```{r}
-summary(plant_model_dredge_best)
+summary(plant_model_dredge_best_cat)
 ```
 glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:shrb + 1, 
     family = gaussian, data = plant_data)
@@ -482,7 +832,7 @@ Number of Fisher Scoring iterations: 2
 
 ```{r}
 habitat_structure_predictors_plant_pred = habitat_structure_predictors
-habitat_structure_predictors_plant_pred$plant_richness = predict(plant_model_dredge_best, habitat_structure_predictors_plant_pred, type="response")
+habitat_structure_predictors_plant_pred$plant_richness = predict(plant_model_dredge_best_cat, habitat_structure_predictors_plant_pred, type="response")
 ```
 
 
@@ -501,7 +851,7 @@ habitat_structure_predictors_plant_pred$shrb_bin = cut(habitat_structure_predict
 ggplot(habitat_structure_predictors_plant_pred, aes(x = gnd_cvr, y = plant_richness, color = factor(shrb_bin))) +
   geom_smooth(size = 1) +
   labs(title = "Interaction effect of ground cover and shrubs on plant richness",
-       x = "gnd_cvr",
+       x = "Ground cover",
        y = "Predicted plant richness",
        color = "Shrub cover") +
   theme_minimal()
@@ -517,7 +867,7 @@ habitat_structure_predictors_plant_pred2 <- expand.grid(
 habitat_structure_predictors_plant_pred2 = habitat_structure_predictors_plant_pred2 %>%
   filter(mat_tr + shrb + gnd_cvr <= 400)
 
-habitat_structure_predictors_plant_pred2$plant_richness = predict(plant_model_dredge_best, habitat_structure_predictors_plant_pred2, type="response")
+habitat_structure_predictors_plant_pred2$plant_richness = predict(plant_model_dredge_best_cat, habitat_structure_predictors_plant_pred2, type="response")
 
 ggplot(habitat_structure_predictors_plant_pred2, aes(x = gnd_cvr, y = shrb, fill = plant_richness)) +
   geom_tile() +
@@ -533,9 +883,54 @@ ggplot(habitat_structure_predictors_plant_pred2, aes(x = gnd_cvr, y = shrb, fill
 ggsave('output/5/plant_predictor_interactions.jpg')
 ```
 
+### Vegetation category and complexity
+```{r}
+summary(plant_model_dredge_best_all)
+```
+Call:
+glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:shrb + 
+    1, family = gaussian, data = plant_data)
+
+Coefficients:
+               Estimate Std. Error t value Pr(>|t|)    
+(Intercept)   2.320e+00  1.278e-01  18.154  < 2e-16 ***
+gnd_cvr      -1.159e-04  4.499e-04  -0.258    0.797    
+mat_tr        4.145e-03  8.603e-04   4.818 2.05e-06 ***
+shrb          2.319e-03  3.705e-03   0.626    0.532    
+gnd_cvr:shrb  4.803e-05  1.926e-05   2.495    0.013 *  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for gaussian family taken to be 0.9659682)
+
+    Null deviance: 458.39  on 409  degrees of freedom
+Residual deviance: 391.22  on 405  degrees of freedom
+AIC: 1156.3
+
+Number of Fisher Scoring iterations: 2
+
+```{r}
+habitat_structure_predictors_plant_pred2$plant_richness_all = predict(plant_model_dredge_best_all, habitat_structure_predictors_plant_pred2, type="response")
+
+ggplot(habitat_structure_predictors_plant_pred2, aes(x = gnd_cvr, y = shrb, fill = plant_richness_all)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(title = "Interaction effect of ground cover and shrubs on plant richness (from model including category and complexity)",
+       x = "gnd_cvr", 
+       y = "shrb", 
+       fill = "Predicted plant richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  xlab('Ground cover') + ylab("Shrub cover") +
+  theme_minimal()
+```
+
 ## Birds - but including 50m buffer around survey area
 
 ```{r}
-summary(bird_model_buf_dredge_best)
+summary(bird_model_buf_dredge_best_cat)
 ```
 
+```{r}
+summary(bird_buf_model_dredge_best_all)
+```
