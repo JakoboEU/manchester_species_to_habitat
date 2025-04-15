@@ -1,0 +1,124 @@
+---
+title: "Look at habitat structure as predictors per species"
+output: html_notebook
+---
+
+
+```{r}
+species_per_grid = read_csv('./output/2_species_data_by_habitat_and_taxa_group.csv')
+species_per_grid
+```
+```{r}
+species_per_grid %>% filter(taxa_group == 'insect') %>% group_by(species) %>% summarise(survey_squares_present = n())
+```
+
+```{r}
+all_survey_squares = species_per_grid %>% dplyr::select(title) %>% distinct() %>% filter(!is.na(title))
+count(all_survey_squares)
+```
+
+```{r}
+species_presence = function(...) {
+  species_names <- c(...)
+  present_list = species_per_grid %>% filter(species %in% species_names) %>% dplyr::select(title) %>% distinct() %>% mutate(present = T)
+  absent_list = all_survey_squares %>% filter(!(title %in% present_list$title)) %>% distinct() %>% mutate(present = F)
+  rbind(present_list, absent_list)
+}
+
+species_presence('Buff-tailed', 'Garden', 'Uknown_White_tailed', 'White_tailed', 'Tree_bumblebee')
+```
+
+```{r}
+habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv') %>% rename(gnd_cvr=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
+habitat_structure_predictors
+```
+
+```{r}
+habitat_complexity = read_csv('input/5/ground_cover_fragstat-1m.csv') %>% 
+  dplyr::select(title, metric, value) %>%
+  pivot_wider(names_from = metric, values_from = value)
+
+habitat_complexity
+```
+
+```{r}
+habitat_complexity %>% filter(is.na(contag)) %>% filter(title %in% all_survey_squares)
+```
+
+```{r}
+habitat_complexity$ed[is.na(habitat_complexity$ed)] = 0
+habitat_complexity$shdi[is.na(habitat_complexity$shdi)] = 0
+habitat_complexity$contag[is.na(habitat_complexity$contag) & habitat_complexity$shdi == 0] = 0
+```
+
+```{r}
+build_data_frame = function(...) {
+  species_presence(...) %>% 
+    left_join(habitat_structure_predictors, by = 'title') %>% 
+    left_join(habitat_complexity, by = 'title') %>%
+    dplyr::select(-title)
+}
+```
+
+
+```{r}
+build_data_frame('Buff-tailed', 'Garden', 'Uknown_White_tailed', 'White_tailed', 'Tree_bumblebee')
+```
+
+```{r, warning=F}
+data = build_data_frame('Buff-tailed', 'Garden', 'Uknown_White_tailed', 'White_tailed', 'Tree_bumblebee')
+dr_res_bb_all_whitetail = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_bb_all_whitetail = get.models(dr_res_bb_all_whitetail, 1)[[1]]
+summary(dr_best_bb_all_whitetail)
+```
+```{r, warning=F}
+data = build_data_frame('Buff-tailed')
+dr_res_bb_buff_tailed = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_bb_buff_tailed = get.models(dr_res_bb_buff_tailed, 1)[[1]]
+summary(dr_best_bb_buff_tailed)
+```
+
+```{r, warning=F}
+data = build_data_frame('Garden')
+dr_res_bb_garden = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_bb_garden = get.models(dr_res_bb_garden, 1)[[1]]
+summary(dr_best_bb_garden)
+```
+
+```{r, warning=F}
+data = build_data_frame('White_tailed')
+dr_res_bb_whitetail = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_bb_whitetail = get.models(dr_res_bb_whitetail, 1)[[1]]
+summary(dr_best_bb_whitetail)
+```
+
+```{r, warning=F}
+data = build_data_frame('Tree_bumblebee')
+dr_res_bb_tree = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_bb_tree = get.models(dr_res_bb_tree, 1)[[1]]
+summary(dr_best_bb_tree)
+```
+
+
+```{r, warning=F}
+data = build_data_frame('Uknown_Red-tailed_bumblebee', 'Red-tailed_bumblebee')
+dr_res_bb_all_redtail = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_bb_all_redtail = get.models(dr_res_bb_all_redtail, 1)[[1]]
+summary(dr_best_bb_all_redtail)
+```
+
+```{r, warning=F}
+data = build_data_frame('Red-tailed_bumblebee')
+dr_res_bb_redtail = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_bb_redtail = get.models(dr_res_bb_redtail, 1)[[1]]
+summary(dr_best_bb_redtail)
+```
+
+
+```{r, warning=F}
+data = build_data_frame('Western_honeybee')
+dr_res_honeybee = dredge(glm(present ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, binomial, data))
+dr_best_honeybee = get.models(dr_res_honeybee, 1)[[1]]
+summary(dr_best_honeybee)
+```
+
