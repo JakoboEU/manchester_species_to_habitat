@@ -12,6 +12,7 @@ library(dbplyr)
 species_by_habitat = read_csv('./output/1_species_by_habitat.csv') %>% rename(taxa_group = group)
 species_by_habitat
 ```
+
 ```{r}
 taxa_group_counts = species_by_habitat %>% distinct(common_name, taxa_group) %>% group_by(taxa_group) %>% summarise(n = n())
 taxa_group_counts

@@ -12,28 +12,51 @@ library(MuMIn)
 library(ggplot2)
 library(ggpubr)
 library(cowplot)
+library(boot)
+library(MASS)
 options(na.action = "na.fail")
-set.seed(123456)
+set.seed(9876543)
 ```
 
-# Calculate taxa richness per survey square
+# Set up functions for data sets of richness of each taxa and habitat predictors
 ```{r}
-species_per_grid = read_csv('./output/2_species_data_by_habitat_and_taxa_group.csv')
-species_per_grid
-```
-```{r}
-taxa_richness_per_grid = species_per_grid %>% filter(!is.na(title)) %>% dplyr::select(title, species, taxa_group) %>% distinct() %>% group_by(title, taxa_group) %>% dplyr::summarise(richness = n())
-taxa_richness_per_grid
-```
-Check number of distinct survey grids
-```{r}
-taxa_richness_per_grid %>% dplyr::select(title) %>% distinct() %>% count()
+survey_data_raw = read_csv('./input/2/form-1__survey.after_2_land_use.csv')
+all_survey_rows = survey_data_raw$title
+length(all_survey_rows)
 ```
 
+## List out all species in each survey square
+```{r}
+survey_data_to_species_list = function(df) {
+  df %>% 
+    unite(concat, -c("title"), sep = ",", remove=T) %>% 
+    separate_rows(concat, convert = TRUE, sep = ",") %>% 
+    filter(!is.na(concat)) %>% 
+    rename(species=concat)
+}
+```
+
+```{r}
+insect_survey_data = survey_data_to_species_list(survey_data_raw %>% select(title, Insects_Butterflies, Insects_Bumblebees, Insects_Hoverflies, Insects_Other))
+insect_survey_data
+```
+
+```{r}
+plant_survey_data = survey_data_to_species_list(survey_data_raw %>% select(title, Plants_Trees, Plants_Midstory, Plants_Ferns, Plants_Orchids, Plants_Fungi, Plants_Micro, Plants_Grasses, Plants_Other))
+plant_survey_data
+```
+
+```{r}
+bird_survey_data = survey_data_to_species_list(survey_data_raw %>% select(title, Birds_Songbirds, Birds_Warblers, Birds_Finches, Birds_Tits, Birds_Crows, Birds_Pigeons, Birds_Aerial, Birds_Other))
+bird_survey_data
+```
+
+## Load habitat category predictors
 ```{r}
 habitat_structure_predictors = read_csv('input/5/ground_cover_classification-1m.csv') %>% rename(gnd_cvr=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
 habitat_structure_predictors
 ```
+## Load habitat complexity predictors
 ```{r}
 habitat_complexity = read_csv('input/5/ground_cover_fragstat-1m.csv') %>% 
   dplyr::select(title, metric, value) %>%
@@ -41,188 +64,266 @@ habitat_complexity = read_csv('input/5/ground_cover_fragstat-1m.csv') %>%
 
 habitat_complexity
 ```
+
 ```{r}
-habitat_complexity %>% filter(is.na(contag)) %>% filter(title %in% taxa_richness_per_grid$title)
+habitat_complexity %>% filter(is.na(contag)) %>% filter(title %in% all_survey_rows)
 ```
+
 ```{r}
 habitat_complexity$ed[is.na(habitat_complexity$ed)] = 0
 habitat_complexity$shdi[is.na(habitat_complexity$shdi)] = 0
 habitat_complexity$contag[is.na(habitat_complexity$contag) & habitat_complexity$shdi == 0] = 0
 ```
 
+## Function to create data set to predict richness from a species data frame
 ```{r}
-create_data_for_taxa = function(taxa_name) {
-  present_records = taxa_richness_per_grid %>% 
-    filter(taxa_group == taxa_name) %>% 
+create_data_for_taxa = function(taxa_df) {
+  present_records = taxa_df %>% 
+    group_by(title) %>%
+    summarise(richness = n()) %>%
     left_join(habitat_structure_predictors, by = 'title') %>% 
     left_join(habitat_complexity, by = 'title') 
   
-  absent_records = taxa_richness_per_grid %>% 
-    dplyr::select(title) %>% 
-    distinct() %>% 
+  absent_records = data.frame(title = all_survey_rows, richness = 0) %>% 
     filter(!(title %in% present_records$title)) %>% 
     left_join(habitat_structure_predictors, by = 'title') %>% 
-    left_join(habitat_complexity, by = 'title') %>% 
-    mutate(richness = 0, taxa_group = taxa_name)
+    left_join(habitat_complexity, by = 'title')
   
-  rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title) %>% dplyr::select(-taxa_group)
+  rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title)
 }
-create_data_for_taxa('insect')
+
+create_data_for_taxa(insect_survey_data)
 ```
+
+# Insect richness predictors
 
 ## Habitat structure for insects
 
 ### Vegetation category
+
+Base model
 ```{r}
-insect_data = create_data_for_taxa('insect')
-insect_model_cat = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, insect_data)
-summary(insect_model_cat)
+insect_data = create_data_for_taxa(insect_survey_data)
+insect_model_cat_base = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, insect_data)
+summary(insect_model_cat_base)
 ```
 
+Use step AIC to find best lm model with 5 way interactions
 ```{r}
-model_interactions_cat <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^2, insect_data)
-summary(model_interactions_cat)
+insect_model_cat_stepAIC = stepAIC(insect_model_cat_base, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
-```{r}
-model_interactions_cat <- lm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, insect_data)
-summary(model_interactions_cat)
-```
 
 ```{r}
-insect_model_selected_cat = stepAIC(insect_model_cat, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+summary(insect_model_cat_stepAIC)
 ```
 
+Compare against base model
 ```{r}
-summary(insect_model_selected_cat)
+AIC(insect_model_cat_base, insect_model_cat_stepAIC)
 ```
 
+Check mean and var of richness
+* If mean == var then use poisson distribution (glm with poisson family)
+* If var > mean (e.g. data overdispersed) then use negative binomial distribution (glm.nb)
 ```{r}
-AIC(insect_model_cat, insect_model_selected_cat)
+mean(insect_data$richness)
+var(insect_data$richness)
 ```
 
+
+Dredge for best poisson model
 ```{r}
-insect_model_dredge_cat = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, insect_data))
-insect_model_dredge_best_cat = get.models(insect_model_dredge_cat, 1)[[1]]
-summary(insect_model_dredge_best_cat)
+insect_model_cat_pois_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, poisson, insect_data), rank = 'AIC')
+insect_model_cat_pois = get.models(insect_model_cat_pois_dredge, 1)[[1]]
+summary(insect_model_cat_pois)
 ```
 
+How to check for overdispersion in your Poisson GLM
 ```{r}
-AIC(insect_model_cat, insect_model_selected_cat, insect_model_dredge_best_cat)
+insect_model_cat_pois_overdispersion_stat <- sum(residuals(insect_model_cat_pois, type = "pearson")^2) / df.residual(insect_model_cat_pois)
+print(insect_model_cat_pois_overdispersion_stat)
+```
+If it's ~1, you're good (Poisson is fine).
+If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
+
+Dredge for best negative bionomial model
+```{r, warning=F}
+insect_model_cat_nb_dredge = dredge(glm.nb(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, insect_data), rank = 'AIC')
+insect_model_cat_nb = get.models(insect_model_cat_nb_dredge, 1)[[1]]
+summary(insect_model_cat_nb)
+```
+
+Check best model based on AIC
+```{r}
+AIC(insect_model_cat_base, insect_model_cat_stepAIC, insect_model_cat_pois, insect_model_cat_nb)
+```
+
+Is it different to base?
+```{r}
+anova(insect_model_cat_base, insect_model_cat_nb, test = "Chisq")
+```
+Check prediction power using k-means 10
+```{r}
+set.seed(6666)
+k = 10
+cv_insect_cat_base <- cv.glm(insect_data, insect_model_cat_base, K = k)
+cv_insect_cat_pois <- cv.glm(insect_data, insect_model_cat_pois, K = k)
+cv_insect_cat_nb <- cv.glm(insect_data, insect_model_cat_nb, K = k)
+
+# Compare LOOCV error (typically in delta[1])
+cv_insect_cat_base$delta
+cv_insect_cat_pois$delta
+cv_insect_cat_nb$delta
+```
+
+### Best model is negative bionomial
+```{r}
+summary(insect_model_cat_nb)
 ```
 
 ### Vegetation complexity
 ```{r}
-insect_model_str = glm(richness ~ ed + contag + shdi, gaussian, insect_data)
-summary(insect_model_str)
+insect_model_com_base = glm(richness ~ ed + contag + shdi, poisson, insect_data)
+summary(insect_model_com_base)
 ```
 
 ```{r}
-insect_model_selected_str = stepAIC(insect_model_str, scope = ~ (ed + contag + shdi)^5, direction = "both")
+insect_model_com_stepAIC = stepAIC(insect_model_com_base, scope = ~ (ed + contag + shdi)^5, direction = "both")
 ```
 
 ```{r}
-summary(insect_model_selected_str)
+summary(insect_model_com_stepAIC)
 ```
 
 ```{r}
-AIC(insect_model_str, insect_model_selected_str)
+AIC(insect_model_com_base, insect_model_com_stepAIC)
+```
+Dredge for best poisson model
+```{r}
+insect_model_com_pois_dredge = dredge(glm(richness ~ (ed + contag + shdi)^3, poisson, insect_data))
+insect_model_com_pois = get.models(insect_model_com_pois_dredge, 1)[[1]]
+summary(insect_model_com_pois)
+```
+
+Dredge for best negative bionomial model
+```{r}
+insect_model_com_nb_dredge = dredge(glm.nb(richness ~ (ed + contag + shdi)^3, insect_data))
+insect_model_com_nb = get.models(insect_model_com_nb_dredge, 1)[[1]]
+summary(insect_model_com_nb)
+```
+
+Which is the best model based on AIC
+```{r}
+AIC(insect_model_com_base, insect_model_com_stepAIC, insect_model_com_pois, insect_model_com_nb)
+```
+
+Is best model different to base model?
+```{r}
+anova(insect_model_com_base, insect_model_com_nb, test = "Chisq")
+```
+Check prediction power using k-means 10
+```{r}
+set.seed(6666)
+k = 10
+cv_insect_com_base <- cv.glm(insect_data, insect_model_com_base, K = k)
+cv_insect_com_pois <- cv.glm(insect_data, insect_model_com_pois, K = k)
+cv_insect_com_nb <- cv.glm(insect_data, insect_model_com_nb, K = k)
+
+# Compare LOOCV error (typically in delta[1])
+cv_insect_com_base$delta
+cv_insect_com_pois$delta
+cv_insect_com_nb$delta
 ```
 
 ```{r}
-insect_model_dredge_str = dredge(glm(richness ~ (ed + contag + shdi)^3, gaussian, insect_data))
-insect_model_dredge_best_str = get.models(insect_model_dredge_str, 1)[[1]]
-summary(insect_model_dredge_best_str)
+summary(insect_model_com_nb)
+```
+📉 Lower CONTAG
+→ land cover types are less clumped, more scattered or intermixed
+
+📈 Higher SHDI
+→ there are more types of land cover, and their abundance is more even
+
+🧠 So together, that means:
+
+    “The landscape is diverse but fragmented — with many different habitat types, but broken up and dispersed rather than forming large, cohesive patches.”
+
+🎯 Landscape-level interpretation:
+Metric	What it’s saying
+SHDI ↑	Lots of different habitat types, balanced distribution
+CONTAG ↓	These types are not clumped — they’re mixed or scattered
+
+This could describe:
+
+    Urban or peri-urban mosaic (trees, grass, roads, buildings)
+
+    Agricultural landscapes with hedgerows, crop types, small woodlots
+
+    Disturbed or transitional landscapes where no one cover type dominates
+
+🌿 Ecological implications:
+Potential Effect	Explanation
+⬆️ Generalist species	Thrive in mixed, fragmented environments
+⬆️ Edge species	More edge, more transitions = more edge habitat
+⬇️ Interior/area-sensitive species	Less core habitat due to fragmentation
+⬆️ Functional diversity (possibly)	If landscape supports multiple niches
+⬇️ Connectivity	Fragmentation can hinder movement of specialist species
+
+### What about a combined model
+```{r}
+insect_model_all_nb_dredge = dredge(glm.nb(richness ~ (shrb + yng_tr + contag + shdi)^3, insect_data))
+insect_model_all_nb = get.models(insect_model_all_nb_dredge, 1)[[1]]
+summary(insect_model_all_nb)
+```
+```{r}
+AIC(insect_model_cat_nb, insect_model_com_nb, insect_model_all_nb)
 ```
 
 ```{r}
-AIC(insect_model_str, insect_model_selected_str, insect_model_dredge_best_str)
+set.seed(6666)
+k = 10
+cv_insect_all_nb <- cv.glm(insect_data, insect_model_all_nb, K = k)
+
+# Compare LOOCV error (typically in delta[1])
+cv_insect_cat_nb$delta
+cv_insect_com_nb$delta
+cv_insect_all_nb$delta
 ```
 
-### Vegetation category and complexity
-```{r}
-insect_model_all = glm(richness ~ ed + shdi + gnd_cvr + shrb + mat_tr, gaussian, insect_data)
-summary(insect_model_all)
-```
-```{r}
-insect_model_selected_all = stepAIC(insect_model_all, scope = ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^5, direction = "both")
-```
+Category is the best predictor and only slightly lower AIC.
 
-```{r}
-summary(insect_model_selected_all)
-```
-
-What does a smaller ED mean?
-➤ Fewer or shorter edges relative to area
-
-This could result from:
-
-    Larger, more cohesive patches (less fragmentation)
-
-    Fewer class transitions (e.g., big block of one habitat type)
-
-    Simpler patch shapes (more compact, less perimeter)
-
-    Lower habitat diversity or dominance of one class
-    
-Ecological interpretation (depends on context!):
- * Lower ED means...	Possible ecological meaning
- * Fewer transitions between habitats	Lower habitat heterogeneity
- * Large, intact habitat blocks	Possibly better for interior species
- * Less fragmentation	Lower edge effects (e.g., less exposure to predators, wind)
- * Simpler patch shapes	Lower shape complexity — maybe more stable environments
-
-```{r}
-insect_model_dredge_all = dredge(glm(richness ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^3, gaussian, insect_data))
-insect_model_dredge_best_all = get.models(insect_model_dredge_all, 1)[[1]]
-summary(insect_model_dredge_best_all)
-```
-
-```{r}
-AIC(insect_model_all, insect_model_dredge_best_all)
-```
-
-
-```{r}
-AIC(insect_model_dredge_best_cat, insect_model_dredge_best_str, insect_model_dredge_best_all)
-```
+# Bird richness predictors
 
 ## Habitat structure for birds
 
-### Vegetation category from survey area
+### Vegetation category
+
+Base model
 ```{r}
-bird_data = create_data_for_taxa('bird')
-bird_model = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_data)
-summary(bird_model)
+bird_data = create_data_for_taxa(bird_survey_data)
+bird_model_cat_base = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_data)
+summary(bird_model_cat_base)
 ```
 
+Use step AIC to find best lm model with 5 way interactions
 ```{r}
-bird_model_selected = stepAIC(bird_model, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+bird_model_cat_stepAIC = stepAIC(bird_model_cat_base, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
-```{r}
-summary(bird_model_selected)
-```
 
 ```{r}
-AIC(bird_model, bird_model_selected)
+summary(bird_model_cat_stepAIC)
 ```
+So the survey area tells us nothing, not really a surprise as we surveyed birds that were up to 50m away from survey area.
+Let's try buffering survey area and look at that extra 50m surrounding.
 
-```{r}
-bird_model_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_data))
-bird_model_dredge_best = get.models(bird_model_dredge, 1)[[1]]
-summary(bird_model_dredge_best)
-```
-
-```{r}
-AIC(bird_model, bird_model_selected, bird_model_dredge_best)
-```
-
-### Vegetation category from 50m buffer around survey area
+# Bird richness predictors with extra 50m buffer
 ```{r}
 habitat_structure_predictors_from_buffer_in = read_csv('input/5/ground_cover_classification-1m-in_buffer.csv') %>% rename(gnd_cvr=herbaceous_coverage, shrb = shrub_coverage, yng_tr = young_tree_coverage, mat_tr = mature_tree_coverage, old_tr = old_tree_coverage)
 habitat_structure_predictors_from_buffer_in
 ```
+
 ```{r}
 habitat_complexity_predictors_from_buffer_in = read_csv('input/5/ground_cover_fragstat-1m-in_buffer.csv') %>%
   dplyr::select(title, metric, value) %>%
@@ -230,8 +331,9 @@ habitat_complexity_predictors_from_buffer_in = read_csv('input/5/ground_cover_fr
 
 habitat_complexity_predictors_from_buffer_in
 ```
+
 ```{r}
-habitat_complexity_predictors_from_buffer_in %>% filter(is.na(contag)) %>% filter(title %in% taxa_richness_per_grid$title)
+habitat_complexity_predictors_from_buffer_in %>% filter(is.na(contag)) %>% filter(title %in% all_survey_rows)
 ```
 
 ```{r}
@@ -257,422 +359,451 @@ habitat_structure_predictors_from_buffer
 ```
 
 ```{r}
-create_data_from_buffer_for_birds = function() {
-  taxa_name = 'bird'
-  present_records = taxa_richness_per_grid %>% 
-    filter(taxa_group == taxa_name) %>% 
-    left_join(habitat_structure_predictors_from_buffer, by = 'title') %>%
+create_data_for_birds_from_buffer_predictors = function() {
+  present_records = bird_survey_data %>% 
+    group_by(title) %>%
+    summarise(richness = n()) %>%
+    left_join(habitat_structure_predictors_from_buffer, by = 'title') %>% 
+    left_join(habitat_complexity_predictors_from_buffer_in, by = 'title') 
+  
+  absent_records = data.frame(title = all_survey_rows, richness = 0) %>% 
+    filter(!(title %in% present_records$title)) %>% 
+    left_join(habitat_structure_predictors_from_buffer, by = 'title') %>% 
     left_join(habitat_complexity_predictors_from_buffer_in, by = 'title')
   
-  absent_records = taxa_richness_per_grid %>% 
-    dplyr::select(title) %>% 
-    distinct() %>% 
-    filter(!(title %in% present_records$title)) %>% 
-    left_join(habitat_structure_predictors_from_buffer, by = 'title') %>%
-    left_join(habitat_complexity_predictors_from_buffer_in, by = 'title') %>% 
-    mutate(richness = 0, taxa_group = taxa_name)
-  
-  rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title) %>% dplyr::select(-taxa_group)
+  rbind(present_records, absent_records) %>% ungroup() %>% dplyr::select(-title)
 }
 ```
 
-```{r}
-bird_buf_data = create_data_from_buffer_for_birds()
-bird_buf_model_cat = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, bird_buf_data)
-summary(bird_buf_model_cat)
-```
-
-```{r}
-bird_buf_model_selected_cat = stepAIC(bird_buf_model_cat, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
-```
-
-```{r}
-summary(bird_buf_model_selected_cat)
-```
-
-```{r}
-AIC(bird_buf_model_cat, bird_buf_model_selected_cat)
-```
-
-```{r}
-bird_model_buf_dredge_cat = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, bird_buf_data))
-bird_model_buf_dredge_best_cat = get.models(bird_model_buf_dredge_cat, 1)[[1]]
-summary(bird_model_buf_dredge_best_cat)
-```
-
-```{r}
-AIC(bird_buf_model_cat, bird_buf_model_selected_cat, bird_model_buf_dredge_best_cat)
-```
-
-### Vegetation complexity from 50m buffer around survey area
-```{r}
-bird_buf_model_str = glm(richness ~ ed + contag + shdi, gaussian, bird_buf_data)
-summary(bird_buf_model_str)
-```
-
-```{r}
-bird_model_buf_selected_str = stepAIC(bird_buf_model_str, scope = ~ (ed + contag + shdi)^5, direction = "both")
-```
-
-```{r}
-summary(bird_model_buf_selected_str)
-```
-
-```{r}
-AIC(bird_buf_model_str, bird_model_buf_selected_str)
-```
-
-```{r}
-bird_model_buf_dredge_str = dredge(glm(richness ~ (ed + contag + shdi)^3, gaussian, insect_data))
-bird_model_buf_dredge_best_str = get.models(bird_model_buf_dredge_str, 1)[[1]]
-summary(bird_model_buf_dredge_best_str)
-```
-
-```{r}
-AIC(bird_buf_model_str, bird_model_buf_selected_str, bird_model_buf_dredge_best_str)
-```
-
-### Vegetation category and complexity in 50m buffer
-```{r}
-bird_buf_model_all = glm(richness ~ ed + shdi + gnd_cvr + shrb, gaussian, insect_data)
-summary(bird_buf_model_all)
-```
-
-```{r}
-bird_buf_model_selected_all = stepAIC(bird_buf_model_all, scope = ~ (ed + shdi + gnd_cvr + shrb)^5, direction = "both")
-```
-
-```{r}
-summary(bird_buf_model_selected_all)
-```
-
-```{r}
-bird_buf_model_dredge_all = dredge(glm(richness ~ (ed + shdi + gnd_cvr + shrb)^3, gaussian, insect_data))
-bird_buf_model_dredge_best_all = get.models(bird_buf_model_dredge_all, 1)[[1]]
-summary(bird_buf_model_dredge_best_all)
-```
-
-```{r}
-AIC(bird_buf_model_all, bird_buf_model_dredge_best_all)
-```
-
-```{r}
-AIC(bird_buf_model_cat, bird_buf_model_str, bird_buf_model_all)
-```
-
-
-
-## Habitat structure for plants
+## Habitat structure for birds
 
 ### Vegetation category
-```{r}
-plant_data = create_data_for_taxa('plant')
-plant_model_cat = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, plant_data)
-summary(plant_model_cat)
-```
 
 ```{r}
-plant_model_selected_cat = stepAIC(plant_model_cat, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+bird_data_buf = create_data_for_birds_from_buffer_predictors()
+bird_buf_model_cat_base = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, poisson, bird_data_buf)
+summary(bird_buf_model_cat_base)
 ```
 
+Use step AIC to find best lm model with 5 way interactions
 ```{r}
-summary(plant_model_selected_cat)
+bird_buf_model_cat_stepAIC = stepAIC(bird_buf_model_cat_base, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
 ```
 
-```{r}
-AIC(plant_model_cat, plant_model_selected_cat)
-```
 
 ```{r}
-plant_model_dredge_cat = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, gaussian, plant_data))
-plant_model_dredge_best_cat = get.models(plant_model_dredge_cat, 1)[[1]]
-summary(plant_model_dredge_best_cat)
+summary(bird_buf_model_cat_stepAIC)
 ```
 
+Compare against base model
 ```{r}
-AIC(plant_model_cat, plant_model_selected_cat, plant_model_dredge_best_cat)
+AIC(bird_buf_model_cat_base, bird_buf_model_cat_stepAIC)
+```
+
+Check mean and var of richness
+* If mean == var then use poisson distribution (glm with poisson family)
+* If var > mean (e.g. data overdispersed) then use negative binomial distribution (glm.nb)
+```{r}
+mean(bird_data_buf$richness)
+var(bird_data_buf$richness)
+```
+
+
+Dredge for best poisson model
+```{r}
+bird_buf_model_cat_pois_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, poisson, bird_data_buf), rank = 'AIC')
+bird_buf_model_cat_pois = get.models(bird_buf_model_cat_pois_dredge, 1)[[1]]
+summary(bird_buf_model_cat_pois)
+```
+
+How to check for overdispersion in your Poisson GLM
+```{r}
+bird_buf_model_cat_pois_overdispersion_stat <- sum(residuals(bird_buf_model_cat_pois, type = "pearson")^2) / df.residual(bird_buf_model_cat_pois)
+print(bird_buf_model_cat_pois_overdispersion_stat)
+```
+If it's ~1, you're good (Poisson is fine).
+If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
+
+Dredge for best negative bionomial model
+```{r, warning=F}
+bird_buf_model_cat_nb_dredge = dredge(glm.nb(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, bird_data_buf), rank = 'AIC')
+bird_buf_model_cat_nb = get.models(bird_buf_model_cat_nb_dredge, 1)[[1]]
+summary(bird_buf_model_cat_nb)
+```
+
+Check best model based on AIC
+```{r}
+AIC(bird_buf_model_cat_base, bird_buf_model_cat_stepAIC, bird_buf_model_cat_pois, bird_buf_model_cat_nb)
+```
+
+Is it different to base?
+```{r}
+anova(bird_buf_model_cat_base, bird_buf_model_cat_pois, test = "Chisq")
+```
+
+Check prediction power using k-means 10
+```{r}
+set.seed(6666)
+k = 10
+cv_bird_cat_base <- cv.glm(bird_data_buf, bird_buf_model_cat_base, K = k)
+cv_bird_cat_pois <- cv.glm(bird_data_buf, bird_buf_model_cat_pois, K = k)
+cv_bird_cat_nb <- cv.glm(bird_data_buf, bird_buf_model_cat_nb, K = k)
+
+# Compare LOOCV error (typically in delta[1])
+cv_bird_cat_base$delta
+cv_bird_cat_pois$delta
+cv_bird_cat_nb$delta
+```
+
+### Best model is poisson
+```{r}
+summary(bird_buf_model_cat_pois)
 ```
 
 ### Vegetation complexity
 ```{r}
-plant_model_str = glm(richness ~ ed + contag + shdi, gaussian, plant_data)
-summary(plant_model_str)
+bird_buf_model_com_base = glm(richness ~ ed + contag + shdi, poisson, bird_data_buf)
+summary(bird_buf_model_com_base)
 ```
 
 ```{r}
-plant_model_selected_str = stepAIC(plant_model_str, scope = ~ (ed + contag + shdi)^5, direction = "both")
+bird_buf_model_com_stepAIC = stepAIC(bird_buf_model_com_base, scope = ~ (ed + contag + shdi)^5, direction = "both")
 ```
 
 ```{r}
-summary(plant_model_selected_str)
+summary(bird_buf_model_com_stepAIC)
 ```
 
 ```{r}
-AIC(plant_model_str, plant_model_selected_str)
+AIC(bird_buf_model_com_base, bird_buf_model_com_stepAIC)
+```
+
+Dredge for best poisson model
+```{r}
+bird_buf_model_com_pois_dredge = dredge(glm(richness ~ (ed + contag + shdi)^3, poisson, bird_data_buf))
+bird_buf_model_com_pois = get.models(bird_buf_model_com_pois_dredge, 1)[[1]]
+summary(bird_buf_model_com_pois)
+```
+
+Dredge for best negative bionomial model
+```{r}
+bird_buf_model_com_nb_dredge = dredge(glm.nb(richness ~ (ed + contag + shdi)^3, bird_data_buf))
+bird_buf_model_com_nb = get.models(bird_buf_model_com_nb_dredge, 1)[[1]]
+summary(bird_buf_model_com_nb)
+```
+
+Which is the best model based on AIC
+```{r}
+AIC(bird_buf_model_com_base, bird_buf_model_com_stepAIC, bird_buf_model_com_pois, bird_buf_model_com_nb)
+```
+
+No significant predictors for habitat complexity
+
+
+# Plant richness predictors
+
+## Habitat structure for plants
+
+### Vegetation category
+
+Base model
+```{r}
+plant_data = create_data_for_taxa(plant_survey_data)
+plant_model_cat_base = glm(richness ~ gnd_cvr + shrb + yng_tr + mat_tr + old_tr, gaussian, plant_data)
+summary(plant_model_cat_base)
+```
+
+Use step AIC to find best lm model with 5 way interactions
+```{r}
+plant_model_cat_stepAIC = stepAIC(plant_model_cat_base, scope = ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^5, direction = "both")
+```
+
+
+```{r}
+summary(plant_model_cat_stepAIC)
+```
+
+Compare against base model
+```{r}
+AIC(plant_model_cat_base, plant_model_cat_stepAIC)
+```
+
+Check mean and var of richness
+* If mean == var then use poisson distribution (glm with poisson family)
+* If var > mean (e.g. data overdispersed) then use negative binomial distribution (glm.nb)
+```{r}
+mean(plant_data$richness)
+var(plant_data$richness)
+```
+
+
+Dredge for best poisson model
+```{r}
+plant_model_cat_pois_dredge = dredge(glm(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, poisson, plant_data), rank = 'AIC')
+plant_model_cat_pois = get.models(plant_model_cat_pois_dredge, 1)[[1]]
+summary(plant_model_cat_pois)
+```
+
+How to check for overdispersion in your Poisson GLM
+```{r}
+plant_model_cat_pois_overdispersion_stat <- sum(residuals(plant_model_cat_pois, type = "pearson")^2) / df.residual(plant_model_cat_pois)
+print(plant_model_cat_pois_overdispersion_stat)
+```
+If it's ~1, you're good (Poisson is fine).
+If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
+
+Dredge for best negative bionomial model
+```{r, warning=F}
+plant_model_cat_nb_dredge = dredge(glm.nb(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, plant_data), rank = 'AIC')
+plant_model_cat_nb = get.models(plant_model_cat_nb_dredge, 1)[[1]]
+summary(plant_model_cat_nb)
+```
+
+Check best model based on AIC
+```{r}
+AIC(plant_model_cat_base, plant_model_cat_stepAIC, plant_model_cat_pois, plant_model_cat_nb)
+```
+
+Is it different to base?
+```{r}
+anova(plant_model_cat_base, plant_model_cat_nb, test = "Chisq")
+```
+
+Check prediction power using k-means 10
+```{r}
+set.seed(6666)
+k = 10
+cv_plant_cat_base <- cv.glm(plant_data, plant_model_cat_base, K = k)
+cv_plant_cat_pois <- cv.glm(plant_data, plant_model_cat_pois, K = k)
+cv_plant_cat_nb <- cv.glm(plant_data, plant_model_cat_nb, K = k)
+
+# Compare LOOCV error (typically in delta[1])
+cv_plant_cat_base$delta
+cv_plant_cat_pois$delta
+cv_plant_cat_nb$delta
+```
+
+### Best model is negative bionomial
+```{r}
+summary(plant_model_cat_nb)
+```
+
+### Vegetation complexity
+```{r}
+plant_model_com_base = glm(richness ~ ed + contag + shdi, poisson, plant_data)
+summary(plant_model_com_base)
 ```
 
 ```{r}
-plant_model_dredge_str = dredge(glm(richness ~ (ed + contag + shdi)^3, gaussian, insect_data))
-plant_model_dredge_best_str = get.models(plant_model_dredge_str, 1)[[1]]
-summary(plant_model_dredge_best_str)
+plant_model_com_stepAIC = stepAIC(plant_model_com_base, scope = ~ (ed + contag + shdi)^5, direction = "both")
 ```
 
 ```{r}
-AIC(plant_model_str, plant_model_selected_str, plant_model_dredge_best_str)
-```
-
-### Vegetation category and complexity
-```{r}
-plant_model_all = glm(richness ~ ed + shdi + gnd_cvr + shrb + mat_tr, gaussian, plant_data)
-summary(plant_model_all)
+summary(plant_model_com_stepAIC)
 ```
 
 ```{r}
-plant_model_selected_all = stepAIC(plant_model_all, scope = ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^5, direction = "both")
+AIC(plant_model_com_base, plant_model_com_stepAIC)
+```
+
+Dredge for best poisson model
+```{r}
+plant_model_com_pois_dredge = dredge(glm(richness ~ (ed + contag + shdi)^3, poisson, plant_data))
+plant_model_com_pois = get.models(plant_model_com_pois_dredge, 1)[[1]]
+summary(plant_model_com_pois)
+```
+
+Dredge for best negative bionomial model
+```{r}
+plant_model_com_nb_dredge = dredge(glm.nb(richness ~ (ed + contag + shdi)^3, plant_data))
+plant_model_com_nb = get.models(plant_model_com_nb_dredge, 1)[[1]]
+summary(plant_model_com_nb)
+```
+
+Which is the best model based on AIC
+```{r}
+AIC(plant_model_com_base, plant_model_com_stepAIC, plant_model_com_pois, plant_model_com_nb)
+```
+
+Is best model different to base model?
+```{r}
+anova(plant_model_com_base, plant_model_com_nb, test = "Chisq")
+```
+Check prediction power using k-means 10
+
+```{r}
+set.seed(6666)
+k = 10
+cv_plant_com_base <- cv.glm(plant_data, plant_model_com_base, K = k)
+cv_plant_com_pois <- cv.glm(plant_data, plant_model_com_pois, K = k)
+cv_plant_com_nb <- cv.glm(plant_data, plant_model_com_nb, K = k)
+
+# Compare LOOCV error (typically in delta[1])
+cv_plant_com_base$delta
+cv_plant_com_pois$delta
+cv_plant_com_nb$delta
 ```
 
 ```{r}
-summary(plant_model_selected_all)
+summary(plant_model_com_nb)
 ```
 
 
+### What about a combined model
+```{r, warning=F}
+plant_model_all_nb_dredge = dredge(glm.nb(richness ~ (gnd_cvr + mat_tr + old_tr + shrb + yng_tr + shdi)^2, insect_data))
+plant_model_all_nb = get.models(plant_model_all_nb_dredge, 1)[[1]]
+summary(plant_model_all_nb)
+```
 
 ```{r}
-plant_model_dredge_all = dredge(glm(richness ~ (ed + shdi + gnd_cvr + shrb + mat_tr)^3, gaussian, plant_data))
-plant_model_dredge_best_all = get.models(plant_model_dredge_all, 1)[[1]]
-summary(plant_model_dredge_best_all)
+AIC(plant_model_cat_nb, plant_model_com_nb, plant_model_all_nb)
 ```
 
 ```{r}
-AIC(plant_model_all, plant_model_dredge_best_all)
+set.seed(6666)
+k = 10
+cv_plant_all_nb <- cv.glm(plant_data, plant_model_all_nb, K = k)
+
+# Compare LOOCV error (typically in delta[1])
+cv_plant_cat_nb$delta
+cv_plant_com_nb$delta
+cv_plant_all_nb$delta
 ```
 
+Best overall model is the category model, the all model has much better AIC but seems to be massively overly fitted.
 
-```{r}
-AIC(plant_model_dredge_best_cat, plant_model_dredge_best_str, plant_model_dredge_best_all)
-```
-
-
-# Plot dredge results
-```{r}
-.coefarr.avg = function(cfarr, weight, revised.var, full, alpha) {	
-    weight <- weight / sum(weight)
-    nCoef <- dim(cfarr)[3L]
-    if(full) {
-      nas <- is.na(cfarr[, 1L, ]) & is.na(cfarr[, 2L, ])
-      cfarr[, 1L, ][nas] <- cfarr[, 2L, ][nas] <- 0
-      #cfarr[, 1L:2L, ][is.na(cfarr[, 1L:2L, ])] <- 0
-      if(!all(is.na(cfarr[, 3L, ])))
-        cfarr[ ,3L, ][is.na(cfarr[ , 3L, ])] <- Inf
-    }
-    
-    avgcoef <- array(dim = c(nCoef, 5L),
-                     dimnames = list(dimnames(cfarr)[[3L]], c("Estimate",
-                                                              "Std. Error", "Adjusted SE", "Lower CI", "Upper CI")))
-    for(i in seq_len(nCoef))
-      avgcoef[i, ] <- par.avg(cfarr[, 1L, i], cfarr[, 2L, i], weight,
-                              df = cfarr[, 3L, i], alpha = alpha, revised.var = revised.var)
-    
-    avgcoef[is.nan(avgcoef)] <- NA
-    return(avgcoef)
-  }
-
-.makecoefmat = function(cf) {
-  no.ase <- all(is.na(cf[, 3L]))
-  z <- abs(cf[, 1L] / cf[, if(no.ase) 2L else 3L])
-  pval <- 2 * pnorm(z, lower.tail = FALSE)
-  cbind(cf[, if(no.ase) 1L:2L else 1L:3L, drop = FALSE],
-        `z value` = z, `Pr(>|z|)` = zapsmall(pval))
-}
-
-model_average <- function(dredge_result) {
-  summary(model.avg(dredge_result))
-}
-
-dredge_summary <- function(model_sum) {
-  # just return the estimate and p value
-  weight <- model_sum$msTable[, 5L]
-  
-  coefmat.full <- as.data.frame(.makecoefmat(.coefarr.avg(model_sum$coefArray, weight,
-                                                          attr(model_sum, "revised.var"), TRUE, 0.05)))
-  coefmat.full <- coefmat.full[-c(1), c(1, 2, 5)]
-  names(coefmat.full) <- c("estimate", "error", "p")
-  coefmat.full <- tibble::rownames_to_column(coefmat.full, "explanatory")
-  
-  coefmat.full
-}
-
-plot_vsurp_result = function(taxa_name, result_table, limit) {
-  neg_limit = -1 * limit
-  
-  ggplot(result_table, aes(y=explanatory, x=estimate)) + 
-    geom_line() +
-    geom_point()+
-    geom_errorbar(aes(xmin=estimate-error, xmax=estimate+error), width=.2,
-                   position=position_dodge(0.05)) +
-    geom_vline(xintercept=0, linetype="dotted") +
-    xlab('Increase in proportion of group presence\n± Standard Error') + ylab('Predictor') +
-    labs(title = taxa_name) +
-    scale_x_continuous(limits = c(neg_limit, limit)) +
-    theme_bw() +
-    theme(legend.justification = "top")
-}
-```
+# Explore interactions
 
 ## Insects
 ```{r}
-insect_model_avg = model_average(insect_model_dredge_cat)
-insect_sum = dredge_summary(insect_model_avg)
-plot_vsurp_result('insect (category)', insect_sum, 0.025)
+summary(insect_model_cat_nb)
 ```
+glm.nb(formula = richness ~ shrb + yng_tr + 1, data = insect_data, 
+    init.theta = 1.450233966, link = log)
 
+Coefficients:
+             Estimate Std. Error z value    Pr(>|z|)    
+(Intercept) -0.571532   0.110742  -5.161 0.000000246 ***
+shrb         0.006660   0.003229   2.062      0.0392 *  
+yng_tr       0.003889   0.002696   1.443      0.1491    
 
 ```{r}
-insect_model_avg = model_average(insect_model_dredge_str)
-insect_sum = dredge_summary(insect_model_avg)
-plot_vsurp_result('insect (structure)', insect_sum, 0.025)
+label_percent_of_400 = function(x) paste0(x*0.25, "%")
 ```
 
 ```{r}
-insect_model_avg = model_average(insect_model_dredge_all)
-insect_sum = dredge_summary(insect_model_avg)
-plot_vsurp_result('insect (all)', insect_sum, 0.025)
-```
+habitat_structure_predictors_insect <- expand.grid(
+  shrb = seq(min(habitat_structure_predictors$shrb), max(habitat_structure_predictors$shrb), length.out = 50),
+  yng_tr = seq(min(habitat_structure_predictors$yng_tr), max(habitat_structure_predictors$yng_tr), length.out = 50)
+)
 
-## Birds (within buffer)
-```{r}
-bird_buf_model_avg = model_average(bird_model_buf_dredge_cat)
-bird_buf_sum = dredge_summary(bird_buf_model_avg)
-plot_vsurp_result('bird (category)', bird_buf_sum, 0.05)
+habitat_structure_predictors_insect = habitat_structure_predictors_insect %>%
+  filter(shrb + yng_tr <= 400)
+
+habitat_structure_predictors_insect$insect_richness = predict(insect_model_cat_nb, habitat_structure_predictors_insect, type="response")
+
+ggplot(habitat_structure_predictors_insect, aes(x = shrb, y = yng_tr, fill = insect_richness)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "Shrub cover", 
+       y = "Young tree cover", 
+       fill = "Predicted insect richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  theme_minimal()
+ggsave('output/5/insect_predictor_interactions.jpg')
 ```
 
 
 ## Plants
 ```{r}
-plant_model_avg = model_average(plant_model_dredge_cat)
-plant_sum = dredge_summary(plant_model_avg)
-plot_vsurp_result('plant (category)', plant_sum, 0.025)
+summary(plant_model_cat_nb)
 ```
-
-# Explore interactions
-
-## Insects
-
-### Vegetation category
-```{r}
-summary(insect_model_dredge_best_cat)
-```
-Call:
-glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:mat_tr + 
-    gnd_cvr:shrb + mat_tr:shrb + gnd_cvr:mat_tr:shrb + 1, family = gaussian, 
-    data = insect_data)
+glm.nb(formula = richness ~ gnd_cvr + mat_tr + old_tr + shrb + 
+    yng_tr + gnd_cvr:shrb + mat_tr:shrb + old_tr:yng_tr + shrb:yng_tr + 
+    1, data = plant_data, init.theta = 19.13506129, link = log)
 
 Coefficients:
-                   Estimate Std. Error t value Pr(>|t|)    
-(Intercept)       4.423e-01  1.113e-01   3.973  8.4e-05 ***
-gnd_cvr              2.889e-04  3.908e-04   0.739 0.460146    
-mat_tr            3.851e-03  1.310e-03   2.939 0.003479 ** 
-shrb              7.502e-03  5.419e-03   1.384 0.167059    
-gnd_cvr:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
-gnd_cvr:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
-mat_tr:shrb      -9.927e-05  4.992e-05  -1.989 0.047428 *  
-gnd_cvr:mat_tr:shrb  1.015e-06  3.732e-07   2.720 0.006820 ** 
----
-Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-(Dispersion parameter for gaussian family taken to be 0.6420709)
-
-    Null deviance: 274.16  on 409  degrees of freedom
-Residual deviance: 258.11  on 402  degrees of freedom
-AIC: 991.8
-
-Number of Fisher Scoring iterations: 2
-
-```{r}
-habitat_structure_predictors_insect_pred = habitat_structure_predictors
-habitat_structure_predictors_insect_pred$insect_richness = predict(insect_model_dredge_best_cat, habitat_structure_predictors_insect_pred, type="response")
-```
+                 Estimate  Std. Error z value             Pr(>|z|)    
+(Intercept)    2.03060662  0.06046494  33.583 < 0.0000000000000002 ***
+gnd_cvr       -0.00033032  0.00020204  -1.635             0.102066    
+mat_tr         0.00013575  0.00068605   0.198             0.843140    
+old_tr         0.00501110  0.00147375   3.400             0.000673 ***
+shrb          -0.00130807  0.00272531  -0.480             0.631249    
+yng_tr         0.00609427  0.00188333   3.236             0.001213 ** 
+gnd_cvr:shrb   0.00003642  0.00000986   3.694             0.000221 ***
+mat_tr:shrb    0.00004912  0.00001941   2.531             0.011379 *  
+old_tr:yng_tr -0.00012447  0.00004084  -3.048             0.002307 ** 
+shrb:yng_tr   -0.00008909  0.00003676  -2.423             0.015385 *  
 
 
 ```{r}
-min(habitat_structure_predictors_insect_pred$mat_tr)
-max(habitat_structure_predictors_insect_pred$mat_tr)
-```
-
-```{r}
-mat_tr_bin_edges <- c(0, 100, 200, 300, 400)
-habitat_structure_predictors_insect_pred$mat_tr_bin = cut(habitat_structure_predictors_insect_pred$mat_tr, breaks = mat_tr_bin_edges, include.lowest = TRUE)
-```
-
-
-```{r}
-ggplot(habitat_structure_predictors_insect_pred, aes(x = gnd_cvr, y = insect_richness, color = factor(mat_tr_bin))) +
-  geom_smooth(size = 1) +
-  labs(title = "Interaction effect of ground cover and mature trees on insect_richness",
-       x = "Ground cover",
-       y = "Predicted insect richness",
-       color = "Mature tree cover Level") +
-  theme_minimal()
-```
-
-
-```{r}
-ggplot(habitat_structure_predictors_insect_pred, aes(x = shrb, y = insect_richness, color = factor(mat_tr_bin))) +
-  geom_smooth(size = 1) +
-  labs(title = "Interaction effect of ground cover and mature trees on insect_richness",
-       x = "Shrub",
-       y = "Predicted insect richness",
-       color = "Mature tree cover Level") +
-  theme_minimal()
-```
-```{r}
-label_percent_of_400 = function(x) paste0(x*0.25, "%")
-```
-
-gnd_cvr:mat_tr      -3.530e-05  1.040e-05  -3.393 0.000759 ***
-gnd_cvr:shrb        -1.662e-05  2.339e-05  -0.710 0.477830    
-mat_tr:shrb      -9.927e-05  4.992e-05  -1.989 0.047428 * 
-```{r}
-habitat_structure_predictors_insect_pred2 <- expand.grid(
+habitat_structure_predictors_plant <- expand.grid(
+  gnd_cvr = seq(min(habitat_structure_predictors$gnd_cvr), max(habitat_structure_predictors$gnd_cvr), length.out = 50),
   mat_tr = seq(min(habitat_structure_predictors$mat_tr), max(habitat_structure_predictors$mat_tr), length.out = 50),
+  old_tr = seq(min(habitat_structure_predictors$old_tr), max(habitat_structure_predictors$old_tr), length.out = 50),
   shrb = seq(min(habitat_structure_predictors$shrb), max(habitat_structure_predictors$shrb), length.out = 50),
-  gnd_cvr = seq(min(habitat_structure_predictors$gnd_cvr), max(habitat_structure_predictors$gnd_cvr), length.out = 50)
+  yng_tr = seq(min(habitat_structure_predictors$yng_tr), max(habitat_structure_predictors$yng_tr), length.out = 50)
 )
 
-habitat_structure_predictors_insect_pred2 = habitat_structure_predictors_insect_pred2 %>%
-  filter(mat_tr + shrb + gnd_cvr <= 400)
+habitat_structure_predictors_plant = habitat_structure_predictors_plant %>%
+  filter(mat_tr + shrb + gnd_cvr + old_tr + yng_tr <= 400)
 
-habitat_structure_predictors_insect_pred2$insect_richness = predict(plant_model_dredge_best_cat, habitat_structure_predictors_insect_pred2, type="response")
+habitat_structure_predictors_plant$plant_richness = predict(plant_model_cat_nb, habitat_structure_predictors_plant, type="response")
 
-p1 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = gnd_cvr, fill = insect_richness)) +
+p1 = ggplot(habitat_structure_predictors_plant, aes(x = gnd_cvr, y = shrb, fill = plant_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
   labs(
-       x = "Mature tree cover", 
-       y = "Ground cover", 
-       fill = "Predicted insect richness") +
+       x = "Ground cover", 
+       y = "Shrub cover", 
+       fill = "Predicted plant richness") +
   scale_y_continuous(label = label_percent_of_400) +
   scale_x_continuous(label = label_percent_of_400) +
   theme_minimal()
 
-p2 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = shrb, y = gnd_cvr, fill = insect_richness)) +
+p2 = ggplot(habitat_structure_predictors_plant, aes(x = yng_tr, y = shrb, fill = plant_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
   labs(
-       x = "Shrub cover", 
-       y = "Ground cover", 
-       fill = "Predicted insect richness") +
+       x = "Young tree cover", 
+       y = "Shrub cover", 
+       fill = "Predicted plant richness") +
   scale_y_continuous(label = label_percent_of_400) +
   scale_x_continuous(label = label_percent_of_400) +
   theme_minimal()
 
-p3 = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = shrb, fill = insect_richness)) +
+p3 = ggplot(habitat_structure_predictors_plant, aes(x = mat_tr, y = shrb, fill = plant_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
   labs(
        x = "Mature tree cover", 
        y = "Shrub cover", 
-       fill = "Predicted insect richness") +
+       fill = "Predicted plant richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  theme_minimal()
+
+p4 = ggplot(habitat_structure_predictors_plant, aes(x = gnd_cvr, y = old_tr, fill = plant_richness)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "Old tree cover", 
+       y = "Shrub cover", 
+       fill = "Predicted plant richness") +
+  scale_y_continuous(label = label_percent_of_400) +
+  scale_x_continuous(label = label_percent_of_400) +
+  theme_minimal()
+
+p5 = ggplot(habitat_structure_predictors_plant, aes(x = yng_tr, y = old_tr, fill = plant_richness)) +
+  geom_tile() +
+  scale_fill_viridis_c() +  # Better color scaling
+  labs(
+       x = "Old tree tree cover", 
+       y = "Shrub cover", 
+       fill = "Predicted plant richness") +
   scale_y_continuous(label = label_percent_of_400) +
   scale_x_continuous(label = label_percent_of_400) +
   theme_minimal()
@@ -684,7 +815,7 @@ legend <- ggpubr::get_legend(
 
 title <- ggdraw() + 
   draw_label(
-    "Interaction effects of ground cover, shrbs and mature trees on insect richness",
+    "Interaction effects of ground cover, shrubs and tree on plant richness",
     fontface = 'bold',
     x = 0,
     hjust = 0
@@ -696,64 +827,36 @@ title <- ggdraw() +
   )
 
 pg = plot_grid(
-  nrow = 2, ncol = 2,
+  nrow = 2, ncol = 3,
   p1 + theme(legend.position="none"),
   p2 + theme(legend.position="none"),
   p3 + theme(legend.position="none"),
+  p4 + theme(legend.position="none"),
+  p5 + theme(legend.position="none"),
   legend
 )
 plot_grid(nrow = 2, ncol = 1, title, pg, rel_heights = c(0.1, 1))
-ggsave('output/5/insect_predictor_interactions.jpg')
+ggsave('output/5/plant_predictor_interactions.jpg')
 ```
 
-### Vegetation category and complexity
+
+
+## Birds - but including 50m buffer around survey area
 ```{r}
-summary(insect_model_dredge_best_all)
+summary(bird_buf_model_cat_pois)
 ```
-
-Call:
-glm(formula = richness ~ ed + gnd_cvr + mat_tr + shrb + gnd_cvr:mat_tr + 
-    gnd_cvr:shrb + mat_tr:shrb + gnd_cvr:mat_tr:shrb + 1, family = gaussian, 
-    data = insect_data)
-
-Coefficients:
-                      Estimate Std. Error t value Pr(>|t|)    
-(Intercept)          5.167e-01  1.184e-01   4.364 1.63e-05 ***
-ed                  -3.987e-05  2.208e-05  -1.806 0.071635 .  
-gnd_cvr              1.286e-04  3.996e-04   0.322 0.747758    
-mat_tr               4.956e-03  1.443e-03   3.435 0.000653 ***
-shrb                 1.140e-02  5.820e-03   1.959 0.050772 .  
-gnd_cvr:mat_tr      -3.388e-05  1.040e-05  -3.257 0.001222 ** 
-gnd_cvr:shrb        -2.487e-05  2.376e-05  -1.046 0.295961    
-mat_tr:shrb         -1.209e-04  5.121e-05  -2.362 0.018671 *  
-gnd_cvr:mat_tr:shrb  1.163e-06  3.811e-07   3.052 0.002428 ** 
----
-Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-(Dispersion parameter for gaussian family taken to be 0.6384777)
-
-    Null deviance: 274.16  on 409  degrees of freedom
-Residual deviance: 256.03  on 401  degrees of freedom
-AIC: 990.48
-
-Number of Fisher Scoring iterations: 2
-
-
 ```{r}
-habitat_structure_predictors_insect_pred2$insect_richness_all = predict(plant_model_dredge_best_all, habitat_structure_predictors_insect_pred2, type="response")
+habitat_structure_predictors_bird <- expand.grid(
+  shrb = seq(min(habitat_structure_predictors_from_buffer$shrb), max(habitat_structure_predictors_from_buffer$shrb), length.out = 50),
+  gnd_cvr = seq(min(habitat_structure_predictors_from_buffer$gnd_cvr), max(habitat_structure_predictors_from_buffer$gnd_cvr), length.out = 50)
+)
 
-p1_all = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = gnd_cvr, fill = insect_richness_all)) +
-  geom_tile() +
-  scale_fill_viridis_c() +  # Better color scaling
-  labs(
-       x = "Mature tree cover", 
-       y = "Ground cover", 
-       fill = "Predicted insect richness") +
-  scale_y_continuous(label = label_percent_of_400) +
-  scale_x_continuous(label = label_percent_of_400) +
-  theme_minimal()
+habitat_structure_predictors_bird = habitat_structure_predictors_bird %>%
+  filter(shrb + gnd_cvr <= 400)
 
-p2_all = ggplot(habitat_structure_predictors_insect_pred2, aes(x = shrb, y = gnd_cvr, fill = insect_richness_all)) +
+habitat_structure_predictors_bird$bird_richness = predict(bird_buf_model_cat_pois, habitat_structure_predictors_bird, type="response")
+
+ggplot(habitat_structure_predictors_bird, aes(x = shrb, y = gnd_cvr, fill = bird_richness)) +
   geom_tile() +
   scale_fill_viridis_c() +  # Better color scaling
   labs(
@@ -763,174 +866,5 @@ p2_all = ggplot(habitat_structure_predictors_insect_pred2, aes(x = shrb, y = gnd
   scale_y_continuous(label = label_percent_of_400) +
   scale_x_continuous(label = label_percent_of_400) +
   theme_minimal()
-
-p3_all = ggplot(habitat_structure_predictors_insect_pred2, aes(x = mat_tr, y = shrb, fill = insect_richness_all)) +
-  geom_tile() +
-  scale_fill_viridis_c() +  # Better color scaling
-  labs(
-       x = "Mature tree cover", 
-       y = "Shrub cover", 
-       fill = "Predicted insect richness") +
-  scale_y_continuous(label = label_percent_of_400) +
-  scale_x_continuous(label = label_percent_of_400) +
-  theme_minimal()
-
-legend_all <- ggpubr::get_legend(
-  # create some space to the left of the legend
-  p1_all
-)
-
-title_all <- ggdraw() + 
-  draw_label(
-    "Interaction effects of ground cover, shrbs and mature trees on insect richness (from model including complexity)",
-    fontface = 'bold',
-    x = 0,
-    hjust = 0
-  ) +
-  theme(
-    # add margin on the left of the drawing canvas,
-    # so title is aligned with left edge of first plot
-    plot.margin = margin(0, 0, 0, 7)
-  )
-
-pg = plot_grid(
-  nrow = 2, ncol = 2,
-  p1_all + theme(legend.position="none"),
-  p2_all + theme(legend.position="none"),
-  p3_all + theme(legend.position="none"),
-  legend_all
-)
-plot_grid(nrow = 2, ncol = 1, title, pg, rel_heights = c(0.1, 1))
-```
-
-## Plants
-
-### Vegetation category
-```{r}
-summary(plant_model_dredge_best_cat)
-```
-glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:shrb + 1, 
-    family = gaussian, data = plant_data)
-
-Coefficients:
-              Estimate Std. Error t value Pr(>|t|)    
-(Intercept)  2.320e+00  1.278e-01  18.154  < 2e-16 ***
-gnd_cvr        -1.159e-04  4.499e-04  -0.258    0.797    
-mat_tr       4.145e-03  8.603e-04   4.818 2.05e-06 ***
-shrb         2.319e-03  3.705e-03   0.626    0.532    
-gnd_cvr:shrb    4.803e-05  1.926e-05   2.495    0.013 *  
----
-Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-(Dispersion parameter for gaussian family taken to be 0.9659682)
-
-    Null deviance: 458.39  on 409  degrees of freedom
-Residual deviance: 391.22  on 405  degrees of freedom
-AIC: 1156.3
-
-Number of Fisher Scoring iterations: 2
-
-```{r}
-habitat_structure_predictors_plant_pred = habitat_structure_predictors
-habitat_structure_predictors_plant_pred$plant_richness = predict(plant_model_dredge_best_cat, habitat_structure_predictors_plant_pred, type="response")
-```
-
-
-```{r}
-min(habitat_structure_predictors_plant_pred$shrb)
-max(habitat_structure_predictors_plant_pred$shrb)
-```
-
-```{r}
-shrb_bin_edges <- c(0, 50, 100, 150, 200, 257)
-habitat_structure_predictors_plant_pred$shrb_bin = cut(habitat_structure_predictors_plant_pred$shrb, breaks = shrb_bin_edges, include.lowest = TRUE)
-```
-
-
-```{r}
-ggplot(habitat_structure_predictors_plant_pred, aes(x = gnd_cvr, y = plant_richness, color = factor(shrb_bin))) +
-  geom_smooth(size = 1) +
-  labs(title = "Interaction effect of ground cover and shrubs on plant richness",
-       x = "Ground cover",
-       y = "Predicted plant richness",
-       color = "Shrub cover") +
-  theme_minimal()
-```
-
-```{r}
-habitat_structure_predictors_plant_pred2 <- expand.grid(
-  mat_tr = seq(min(habitat_structure_predictors$mat_tr), max(habitat_structure_predictors$mat_tr), length.out = 50),
-  shrb = seq(min(habitat_structure_predictors$shrb), max(habitat_structure_predictors$shrb), length.out = 50),
-  gnd_cvr = seq(min(habitat_structure_predictors$gnd_cvr), max(habitat_structure_predictors$gnd_cvr), length.out = 50)
-)
-
-habitat_structure_predictors_plant_pred2 = habitat_structure_predictors_plant_pred2 %>%
-  filter(mat_tr + shrb + gnd_cvr <= 400)
-
-habitat_structure_predictors_plant_pred2$plant_richness = predict(plant_model_dredge_best_cat, habitat_structure_predictors_plant_pred2, type="response")
-
-ggplot(habitat_structure_predictors_plant_pred2, aes(x = gnd_cvr, y = shrb, fill = plant_richness)) +
-  geom_tile() +
-  scale_fill_viridis_c() +  # Better color scaling
-  labs(title = "Interaction effect of ground cover and shrubs on plant richness",
-       x = "gnd_cvr", 
-       y = "shrb", 
-       fill = "Predicted plant richness") +
-  scale_y_continuous(label = label_percent_of_400) +
-  scale_x_continuous(label = label_percent_of_400) +
-  xlab('Ground cover') + ylab("Shrub cover") +
-  theme_minimal()
-ggsave('output/5/plant_predictor_interactions.jpg')
-```
-
-### Vegetation category and complexity
-```{r}
-summary(plant_model_dredge_best_all)
-```
-Call:
-glm(formula = richness ~ gnd_cvr + mat_tr + shrb + gnd_cvr:shrb + 
-    1, family = gaussian, data = plant_data)
-
-Coefficients:
-               Estimate Std. Error t value Pr(>|t|)    
-(Intercept)   2.320e+00  1.278e-01  18.154  < 2e-16 ***
-gnd_cvr      -1.159e-04  4.499e-04  -0.258    0.797    
-mat_tr        4.145e-03  8.603e-04   4.818 2.05e-06 ***
-shrb          2.319e-03  3.705e-03   0.626    0.532    
-gnd_cvr:shrb  4.803e-05  1.926e-05   2.495    0.013 *  
----
-Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-(Dispersion parameter for gaussian family taken to be 0.9659682)
-
-    Null deviance: 458.39  on 409  degrees of freedom
-Residual deviance: 391.22  on 405  degrees of freedom
-AIC: 1156.3
-
-Number of Fisher Scoring iterations: 2
-
-```{r}
-habitat_structure_predictors_plant_pred2$plant_richness_all = predict(plant_model_dredge_best_all, habitat_structure_predictors_plant_pred2, type="response")
-
-ggplot(habitat_structure_predictors_plant_pred2, aes(x = gnd_cvr, y = shrb, fill = plant_richness_all)) +
-  geom_tile() +
-  scale_fill_viridis_c() +  # Better color scaling
-  labs(title = "Interaction effect of ground cover and shrubs on plant richness (from model including category and complexity)",
-       x = "gnd_cvr", 
-       y = "shrb", 
-       fill = "Predicted plant richness") +
-  scale_y_continuous(label = label_percent_of_400) +
-  scale_x_continuous(label = label_percent_of_400) +
-  xlab('Ground cover') + ylab("Shrub cover") +
-  theme_minimal()
-```
-
-## Birds - but including 50m buffer around survey area
-
-```{r}
-summary(bird_model_buf_dredge_best_cat)
-```
-
-```{r}
-summary(bird_buf_model_dredge_best_all)
+ggsave('output/5/bird_predictor_interactions.jpg')
 ```
