@@ -141,22 +141,22 @@ insect_model_cat_pois = get.models(insect_model_cat_pois_dredge, 1)[[1]]
 summary(insect_model_cat_pois)
 ```
 
-```{r}
-summary(get.models(insect_model_cat_pois_dredge, 1)[[1]])
-summary(get.models(insect_model_cat_pois_dredge, 2)[[1]])
-summary(get.models(insect_model_cat_pois_dredge, 3)[[1]])
-```
+#### Our residual deviance 
+https://biometry.github.io/APES//LectureNotes/2016-JAGS/Overdispersion/OverdispersionJAGS.html
+
 The rule of thumb is that the ratio of deviance to df should be '1'.
-We have  
+
+We have 
 ```{r}
 539.64 / 390
 ```
 
-How to check for overdispersion in your Poisson GLM
+How to check for overdispersion in your Poisson GLM (looking for residual deviance)
 ```{r}
 insect_model_cat_pois_overdispersion_stat <- sum(residuals(insect_model_cat_pois, type = "pearson")^2) / df.residual(insect_model_cat_pois)
 print(insect_model_cat_pois_overdispersion_stat)
 ```
+
 If it's ~1, you're good (Poisson is fine).
 If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
 
@@ -607,9 +607,7 @@ print(plant_model_cat_pois_overdispersion_stat)
 ```
 If it's ~1, you're good (Poisson is fine).
 If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
-
-https://biometry.github.io/APES//LectureNotes/2016-JAGS/Overdispersion/OverdispersionJAGS.html
-
+ 
 ```{r}
 dispersiontest(plant_model_cat_pois)
 ```
