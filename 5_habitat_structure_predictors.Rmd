@@ -14,6 +14,8 @@ library(ggpubr)
 library(cowplot)
 library(boot)
 library(MASS)
+library(AER)
+library(DHARMa)
 options(na.action = "na.fail")
 set.seed(9876543)
 ```
@@ -37,17 +39,17 @@ survey_data_to_species_list = function(df) {
 ```
 
 ```{r}
-insect_survey_data = survey_data_to_species_list(survey_data_raw %>% select(title, Insects_Butterflies, Insects_Bumblebees, Insects_Hoverflies, Insects_Other))
+insect_survey_data = survey_data_to_species_list(survey_data_raw %>% dplyr::select(title, Insects_Butterflies, Insects_Bumblebees, Insects_Hoverflies, Insects_Other))
 insect_survey_data
 ```
 
 ```{r}
-plant_survey_data = survey_data_to_species_list(survey_data_raw %>% select(title, Plants_Trees, Plants_Midstory, Plants_Ferns, Plants_Orchids, Plants_Fungi, Plants_Micro, Plants_Grasses, Plants_Other))
+plant_survey_data = survey_data_to_species_list(survey_data_raw %>% dplyr::select(title, Plants_Trees, Plants_Midstory, Plants_Ferns, Plants_Orchids, Plants_Fungi, Plants_Micro, Plants_Grasses, Plants_Other))
 plant_survey_data
 ```
 
 ```{r}
-bird_survey_data = survey_data_to_species_list(survey_data_raw %>% select(title, Birds_Songbirds, Birds_Warblers, Birds_Finches, Birds_Tits, Birds_Crows, Birds_Pigeons, Birds_Aerial, Birds_Other))
+bird_survey_data = survey_data_to_species_list(survey_data_raw %>% dplyr::select(title, Birds_Songbirds, Birds_Warblers, Birds_Finches, Birds_Tits, Birds_Crows, Birds_Pigeons, Birds_Aerial, Birds_Other))
 bird_survey_data
 ```
 
@@ -139,6 +141,17 @@ insect_model_cat_pois = get.models(insect_model_cat_pois_dredge, 1)[[1]]
 summary(insect_model_cat_pois)
 ```
 
+```{r}
+summary(get.models(insect_model_cat_pois_dredge, 1)[[1]])
+summary(get.models(insect_model_cat_pois_dredge, 2)[[1]])
+summary(get.models(insect_model_cat_pois_dredge, 3)[[1]])
+```
+The rule of thumb is that the ratio of deviance to df should be '1'.
+We have  
+```{r}
+539.64 / 390
+```
+
 How to check for overdispersion in your Poisson GLM
 ```{r}
 insect_model_cat_pois_overdispersion_stat <- sum(residuals(insect_model_cat_pois, type = "pearson")^2) / df.residual(insect_model_cat_pois)
@@ -147,11 +160,31 @@ print(insect_model_cat_pois_overdispersion_stat)
 If it's ~1, you're good (Poisson is fine).
 If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
 
+```{r}
+dispersiontest(insect_model_cat_pois)
+```
+```{r}
+sim_insect_model_cat_pois <- simulateResiduals(insect_model_cat_pois, refit=T, n=99)
+plot(sim_insect_model_cat_pois)
+```
+```{r}
+testDispersion(sim_insect_model_cat_pois)
+```
+
 Dredge for best negative bionomial model
 ```{r, warning=F}
 insect_model_cat_nb_dredge = dredge(glm.nb(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, insect_data), rank = 'AIC')
 insect_model_cat_nb = get.models(insect_model_cat_nb_dredge, 1)[[1]]
 summary(insect_model_cat_nb)
+```
+
+```{r}
+sim_insect_model_cat_nb <- simulateResiduals(insect_model_cat_nb, refit=T, n=99)
+plot(sim_insect_model_cat_nb)
+```
+
+```{r}
+testDispersion(sim_insect_model_cat_nb)
 ```
 
 Check best model based on AIC
@@ -163,6 +196,7 @@ Is it different to base?
 ```{r}
 anova(insect_model_cat_base, insect_model_cat_nb, test = "Chisq")
 ```
+
 Check prediction power using k-means 10
 ```{r}
 set.seed(6666)
@@ -424,11 +458,33 @@ print(bird_buf_model_cat_pois_overdispersion_stat)
 If it's ~1, you're good (Poisson is fine).
 If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
 
+```{r}
+dispersiontest(bird_buf_model_cat_pois)
+```
+
+```{r}
+sim_bird_buf_model_cat_pois <- simulateResiduals(bird_buf_model_cat_pois, refit=T, n=99)
+plot(sim_bird_buf_model_cat_pois)
+```
+
+```{r}
+testDispersion(sim_bird_buf_model_cat_pois)
+```
+
 Dredge for best negative bionomial model
 ```{r, warning=F}
 bird_buf_model_cat_nb_dredge = dredge(glm.nb(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, bird_data_buf), rank = 'AIC')
 bird_buf_model_cat_nb = get.models(bird_buf_model_cat_nb_dredge, 1)[[1]]
 summary(bird_buf_model_cat_nb)
+```
+
+```{r, warning=F}
+sim_bird_buf_model_cat_nb <- simulateResiduals(bird_buf_model_cat_nb, refit=T, n=99)
+plot(sim_bird_buf_model_cat_nb)
+```
+
+```{r}
+testDispersion(sim_bird_buf_model_cat_nb)
 ```
 
 Check best model based on AIC
@@ -442,7 +498,7 @@ anova(bird_buf_model_cat_base, bird_buf_model_cat_pois, test = "Chisq")
 ```
 
 Check prediction power using k-means 10
-```{r}
+```{r, warning=F}
 set.seed(6666)
 k = 10
 cv_bird_cat_base <- cv.glm(bird_data_buf, bird_buf_model_cat_base, K = k)
@@ -552,11 +608,35 @@ print(plant_model_cat_pois_overdispersion_stat)
 If it's ~1, you're good (Poisson is fine).
 If it's >1.5 or 2, that suggests overdispersion → consider using glm.nb().
 
+https://biometry.github.io/APES//LectureNotes/2016-JAGS/Overdispersion/OverdispersionJAGS.html
+
+```{r}
+dispersiontest(plant_model_cat_pois)
+```
+
+```{r}
+sim_plant_model_cat_pois <- simulateResiduals(plant_model_cat_pois, refit=T, n=99)
+plot(sim_plant_model_cat_pois)
+```
+
+```{r}
+testDispersion(sim_plant_model_cat_pois)
+```
+
 Dredge for best negative bionomial model
 ```{r, warning=F}
 plant_model_cat_nb_dredge = dredge(glm.nb(richness ~ (gnd_cvr + shrb + yng_tr + mat_tr + old_tr)^3, plant_data), rank = 'AIC')
 plant_model_cat_nb = get.models(plant_model_cat_nb_dredge, 1)[[1]]
 summary(plant_model_cat_nb)
+```
+
+```{r}
+sim_plant_model_cat_nb <- simulateResiduals(plant_model_cat_nb, refit=T, n=99)
+plot(sim_plant_model_cat_nb)
+```
+
+```{r}
+testDispersion(sim_plant_model_cat_nb)
 ```
 
 Check best model based on AIC
